@@ -1,4 +1,4 @@
-# dev_analyzer_inspector
+# Dev Analyzer Inspector
 
 간단한 MVP 도구로 Git 리포지토리를 클론하고 정적 분석 결과를 통합 리포트로 생성합니다.
 
