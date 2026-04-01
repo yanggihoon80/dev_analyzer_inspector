@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dev Analyzer Inspector Report</title>
+  <style>
+    body { font-family: Inter, Arial, sans-serif; margin: 24px; background: #f4f5f7; color: #1f2937; }
+    h1, h2, h3 { color: #111827; margin-top: 0; }
+    .page-header { margin-bottom: 24px; }
+    .grid { display: grid; gap: 16px; }
+    .overview-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .card { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 20px; box-shadow: 0 1px 2px rgba(15,23,42,0.08); }
+    .card h2 { font-size: 1.1rem; margin-bottom: 12px; }
+    .stat { font-size: 2rem; font-weight: 700; margin: 0; }
+    .stat-label { color: #6b7280; margin-top: 8px; }
+    .badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; }
+    .badge-high { background: #fee2e2; color: #991b1b; }
+    .badge-medium { background: #fef3c7; color: #92400e; }
+    .badge-low { background: #d1fae5; color: #166534; }
+    .table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+    .table th, .table td { border: 1px solid #e5e7eb; padding: 12px; text-align: left; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; }
+    .table th { background: #f9fafb; font-weight: 700; }
+    .section-title { margin-top: 40px; margin-bottom: 16px; }
+    .code-block { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; border: 1px solid #cbd5e1; }
+    .metadata { color: #6b7280; font-size: 0.95rem; margin-top: 6px; word-wrap: break-word; overflow-wrap: anywhere; }
+    .fix-suggestion { margin-top: 18px; padding: 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; color: #1f2937; }
+    .fix-suggestion h4 { margin: 0 0 10px; font-size: 1rem; color: #111827; }
+    .fix-suggestion p { margin: 0 0 10px; line-height: 1.6; color: #334155; }
+    .fix-suggestion strong { color: #111827; }
+    .fix-suggestion-code { margin-top: 8px; }
+    .accordion-details { border: 1px solid #e5e7eb; border-radius: 14px; background: #ffffff; overflow: hidden; }
+    .accordion-details summary { list-style: none; cursor: pointer; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 14px; color: #111827; font-weight: 600; }
+    .accordion-details summary::-webkit-details-marker { display: none; }
+    .accordion-details summary span { display: inline-flex; align-items: center; gap: 8px; }
+    .accordion-content { padding: 0 16px 16px; }
+    .accordion-content .code-block { margin-top: 12px; }
+    .accordion-details[open] summary { background: #e2e8f0; }
+    .summary-list { list-style: none; padding: 0; margin: 0; }
+    .summary-list li { margin-bottom: 6px; }
+    .ai-summary-card { overflow: hidden; }
+    .ai-summary-content p { margin: 0 0 10px; line-height: 1.7; }
+    .ai-summary-content ul, .ai-summary-content ol { margin: 0 0 10px 20px; }
+    .ai-summary-fallback { color: #7f1d1d; }
+    .metadata { color: #6b7280; font-size: 0.95rem; margin-top: 6px; }
+    .priority-reason { color: #374151; font-size: 0.95rem; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="page-header">
+    <h1>Dev Analyzer Inspector Report</h1>
+    <p>자동 생성된 정적 분석 결과를 개발자에게 보기 쉽게 정리합니다.</p>
+  </div>
+
+  <div class="grid overview-grid">
+    <div class="card">
+      <h2>총 이슈</h2>
+      <p class="stat">{{ data.summary.total }}</p>
+      <p class="stat-label">전체 이슈 수</p>
+    </div>
+    <div class="card">
+      <h2>Severity Breakdown</h2>
+      <p class="badge badge-high">HIGH {{ data.summary.severity.HIGH }}</p>
+      <p class="badge badge-medium">MEDIUM {{ data.summary.severity.MEDIUM }}</p>
+      <p class="badge badge-low">LOW {{ data.summary.severity.LOW }}</p>
+    </div>
+    <div class="card">
+      <h2>Tool Breakdown</h2>
+      <ul class="summary-list">
+        {% for tool, count in data.summary.tool.items() %}
+        <li>{{ tool }}: {{ count }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    <div class="card">
+      <h2>가장 위험한 이슈</h2>
+      {% if data.summary.top_risky_issue %}
+      <p><strong>{{ data.summary.top_risky_issue.rule_id }}</strong></p>
+      <p class="metadata">{{ data.summary.top_risky_issue.file }}:{{ data.summary.top_risky_issue.line }} ({{ data.summary.top_risky_issue.severity }})</p>
+      <p>{{ data.summary.top_risky_issue.message }}</p>
+      {% else %}
+      <p>분석 결과가 없습니다.</p>
+      {% endif %}
+    </div>
+  </div>
+
+  {% if data.summary.most_affected_file %}
+  <div class="grid" style="margin-top: 24px;">
+    <div class="card">
+      <h2>가장 많은 이슈가 발생한 파일</h2>
+      <p><strong>{{ data.summary.most_affected_file.file }}</strong></p>
+      <p class="metadata">{{ data.summary.most_affected_file.count }}건</p>
+    </div>
+    {% if data.summary.duplicate_rules %}
+    <div class="card">
+      <h2>중복 이슈 패턴</h2>
+      <ul class="summary-list">
+        {% for duplicate in data.summary.duplicate_rules %}
+        <li>{{ duplicate.rule_id }}: {{ duplicate.count }}건</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <h2 class="section-title">Issue Group Summary</h2>
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Rule</th>
+          <th>Severity</th>
+          <th>Count</th>
+          <th>Files</th>
+          <th>Tools</th>
+          <th>Representative Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for group in data.rule_groups %}
+        <tr>
+          <td>{{ group.rule_id }}</td>
+          <td class="severity-{{ group.severity }}">{{ group.severity }}</td>
+          <td>{{ group.count }}</td>
+          <td>{{ group.affected_files }}</td>
+          <td>{{ group.tools | join(', ') }}</td>
+          <td>{{ group.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section-title">Recommended Fix Order</h2>
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Rule</th>
+          <th>Category</th>
+          <th>Severity</th>
+          <th>Files</th>
+          <th>Count</th>
+          <th>Why fix first</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in data.recommendations %}
+        <tr>
+          <td>{{ item.rank }}</td>
+          <td>{{ item.rule_id }}</td>
+          <td>{{ item.category }}</td>
+          <td class="severity-{{ item.severity }}">{{ item.severity }}</td>
+          <td>{{ item.affected_files }}</td>
+          <td>{{ item.count }}</td>
+          <td class="priority-reason">{{ item.reason }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="section-title">Top Issues</h2>
+  <div class="card">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Tool</th>
+          <th>Severity</th>
+          <th>Rule</th>
+          <th>File</th>
+          <th>Line</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in data.issues %}
+        <tr>
+          <td>{{ loop.index }}</td>
+          <td>{{ item.tool }}</td>
+          <td class="severity-{{ item.severity }}">{{ item.severity }}</td>
+          <td>{{ item.rule_id }}</td>
+          <td>{{ item.file }}</td>
+          <td>{{ item.line }}</td>
+          <td>{{ item.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if data.ai_summary_html %}
+  <h2 class="section-title">AI Summary</h2>
+  <div class="card ai-summary-card">
+    <div class="ai-summary-content">{{ data.ai_summary_html | safe }}</div>
+  </div>
+  {% endif %}
+
+  <h2 class="section-title">Issue Code Sample</h2>
+  {% for item in data.issues %}
+  <div class="card">
+    <h3>{{ loop.index }}. {{ item.file }}:{{ item.line }} ({{ item.tool }})</h3>
+    <p class="metadata">{{ item.rule_id }} — {{ item.severity }}</p>
+    <details class="accordion-details">
+      <summary><span>코드 샘플 & Fix Suggestion 열기</span><strong>▼</strong></summary>
+      <div class="accordion-content">
+        <div class="code-block">{{ item.code or "코드 정보 없음" }}</div>
+        {% if item.fix_suggestion %}
+        <div class="fix-suggestion">
+          <h4>Fix Suggestion: {{ item.fix_suggestion.title }}</h4>
+          <p><strong>Why this is risky:</strong> {{ item.fix_suggestion.why_risky }}</p>
+          <p><strong>Recommended fix:</strong> {{ item.fix_suggestion.recommended_fix }}</p>
+          <div class="fix-suggestion-code">
+            <p><strong>Example before</strong></p>
+            <div class="code-block">{{ item.fix_suggestion.before_example }}</div>
+          </div>
+          <div class="fix-suggestion-code">
+            <p><strong>Example after</strong></p>
+            <div class="code-block">{{ item.fix_suggestion.after_example }}</div>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+  {% endfor %}
+</body>
+</html>
