@@ -1,15 +1,71 @@
+import json
+from fnmatch import fnmatch
 from pathlib import Path
 from markupsafe import Markup
 from jinja2 import Environment, FileSystemLoader
 
 try:
-    from .llm_summary import generate_ai_summary
+    from .llm_summary import generate_ai_summary, generate_fix_suggestions, translate_issue_messages
 except ImportError:
-    from llm_summary import generate_ai_summary
+    from llm_summary import generate_ai_summary, generate_fix_suggestions, translate_issue_messages
 
 
 def _severity_value(severity: str) -> int:
     return {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(severity.upper(), 1)
+
+
+def _severity_label(severity: str) -> str:
+    return {
+        "HIGH": "높음",
+        "MEDIUM": "보통",
+        "LOW": "낮음",
+    }.get(severity.upper(), severity)
+
+
+def _category_label(category: str) -> str:
+    return {
+        "security": "보안",
+        "code_quality": "코드 품질",
+    }.get(category, category)
+
+
+def _tool_label(tool: str) -> str:
+    return {
+        "semgrep": "Semgrep",
+        "eslint": "ESLint",
+        "bandit": "Bandit",
+        "unknown": "알 수 없음",
+    }.get(tool, tool)
+
+
+def _load_issue_rules(template_dir: Path) -> list[dict]:
+    rules_path = template_dir / "issue_rules.json"
+    if not rules_path.is_file():
+        return []
+    try:
+        data = json.loads(rules_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return sorted(
+        [rule for rule in data if isinstance(rule, dict)],
+        key=lambda rule: int(rule.get("priority", 100)),
+    )
+
+
+def _decorate_item(item: dict) -> dict:
+    item["severity_label"] = _severity_label(item.get("severity", "MEDIUM"))
+    item["category_label"] = _category_label(item.get("category", "code_quality"))
+    item["tool_label"] = _tool_label(item.get("tool", "unknown"))
+    item["translated_message"] = item.get("translated_message") or item.get("message", "")
+    return item
+
+
+def _apply_translations(items: list[dict], translations: dict[str, str]) -> None:
+    for item in items:
+        message = (item.get("message") or "").strip()
+        item["translated_message"] = translations.get(message, message)
 
 
 def _build_summary(items: list[dict]) -> dict:
@@ -61,10 +117,13 @@ def _build_summary(items: list[dict]) -> dict:
         summary["top_risky_issue"] = {
             "rule_id": top.get("rule_id", ""),
             "severity": top.get("severity", "MEDIUM"),
+            "severity_label": _severity_label(top.get("severity", "MEDIUM")),
             "file": top.get("file", ""),
             "line": top.get("line", 0),
             "message": top.get("message", ""),
+            "translated_message": top.get("translated_message", top.get("message", "")),
             "tool": top.get("tool", ""),
+            "tool_label": _tool_label(top.get("tool", "")),
         }
 
     return summary
@@ -104,12 +163,16 @@ def _build_rule_groups(items: list[dict]) -> list[dict]:
             {
                 "rule_id": group["rule_id"],
                 "category": group["category"],
+                "category_label": _category_label(group["category"]),
                 "severity": group["severity"],
+                "severity_label": _severity_label(group["severity"]),
                 "count": group["count"],
                 "affected_files": len(group["files"]),
                 "files": sorted(group["files"]),
                 "tools": sorted(group["tools"]),
+                "tool_labels": [_tool_label(tool) for tool in sorted(group["tools"])],
                 "message": group["message"],
+                "translated_message": group.get("translated_message", group["message"]),
                 "severity_value": group["severity_value"],
             }
         )
@@ -141,22 +204,25 @@ def _build_recommendations(groups: list[dict]) -> list[dict]:
                 "rank": index,
                 "rule_id": group["rule_id"],
                 "category": group["category"],
+                "category_label": _category_label(group["category"]),
                 "severity": group["severity"],
+                "severity_label": _severity_label(group["severity"]),
                 "count": group["count"],
                 "affected_files": group["affected_files"],
                 "files": group["files"],
                 "tools": group["tools"],
+                "tool_labels": [_tool_label(tool) for tool in group["tools"]],
                 "message": group["message"],
+                "translated_message": group.get("translated_message", group["message"]),
                 "reason": "; ".join(reasons),
             }
         )
     return recommendations
 
 
-def _build_fix_suggestion(item: dict) -> dict:
-    rule_id = item.get("rule_id", "").lower()
+def _fallback_fix_suggestion(item: dict) -> dict:
     code_context = item.get("code", "").strip()
-    fallback = {
+    return {
         "title": "수동 검토가 필요합니다",
         "why_risky": "이 이슈에 대한 안전한 수정 패턴을 검토하고 적용하세요.",
         "recommended_fix": "이 발견 항목을 수동으로 검토하고 보안 또는 코드 품질 기준에 맞게 수정하십시오.",
@@ -164,39 +230,113 @@ def _build_fix_suggestion(item: dict) -> dict:
         "after_example": "안전한 코딩 패턴을 적용한 수정 코드를 작성하세요.",
     }
 
-    if "wildcard-postmessage-configuration" in rule_id or "wildcard-postmessage" in rule_id:
-        return {
-            "title": "postMessage에 명시적 origin 사용",
-            "why_risky": "'*'를 사용하면 모든 origin이 메시지를 받을 수 있어 민감 데이터가 노출될 수 있습니다.",
-            "recommended_fix": "신뢰할 수 있는 origin 값을 명시적으로 지정하고, 가능한 경우 상수 또는 설정으로 분리하세요.",
-            "before_example": code_context or 'window.opener.postMessage(data, "*")',
-            "after_example": 'window.opener.postMessage(data, "https://trusted.example.com")',
-        }
 
-    if "detected-generic-api-key" in rule_id or "generic-api-key" in rule_id:
-        return {
-            "title": "비밀 정보는 하드코딩하지 마세요",
-            "why_risky": "코드에 포함된 API 키는 저장소, 로그, 번들, 스크린샷을 통해 쉽게 유출될 수 있습니다.",
-            "recommended_fix": "민감한 키는 환경 변수 또는 서버 보관소로 이동하고, 프런트엔드 번들에는 노출하지 마세요.",
-            "before_example": code_context or 'apiKey="hardcoded-secret"',
-            "after_example": 'apiKey={process.env.NEXT_PUBLIC_EDITOR_API_KEY}',
-        }
+def _issue_signature(item: dict) -> str:
+    from hashlib import sha256
+    import json
 
-    if "detect-non-literal-regexp" in rule_id or "non-literal-regexp" in rule_id:
-        return {
-            "title": "사용자 입력 RegExp를 안전하게 처리",
-            "why_risky": "비리터럴 RegExp는 사용자 입력에 의해 생성될 때 ReDoS를 일으킬 수 있습니다.",
-            "recommended_fix": "사용자 입력을 먼저 escape하거나 정적 매칭을 사용하며, 가능한 경우 RegExp 생성자를 직접 호출하지 마세요.",
-            "before_example": code_context or 'new RegExp(term + ",?", "g")',
-            "after_example": 'new RegExp(escapeRegExp(term) + ",?", "g")\n\nfunction escapeRegExp(value) {\n  return value.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");\n}',
-        }
+    payload = json.dumps(
+        {
+            "rule_id": item.get("rule_id", ""),
+            "message": item.get("message", ""),
+            "file": item.get("file", ""),
+            "line": item.get("line", 0),
+            "code": item.get("code", ""),
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    return sha256(payload.encode("utf-8")).hexdigest()
 
-    return fallback
+
+def _resolve_template_placeholders(text: str, item: dict, code_context: str) -> str:
+    if not text:
+        return text
+    replacements = {
+        "{code_context}": code_context or "실제 코드가 없으면 여기에 사용된 패턴을 확인하세요.",
+        "{message}": item.get("translated_message") or item.get("message", ""),
+        "{raw_message}": item.get("message", ""),
+        "{file}": item.get("file", ""),
+        "{line}": str(item.get("line", 0)),
+        "{rule_id}": item.get("rule_id", ""),
+        "{severity}": item.get("severity_label") or item.get("severity", ""),
+        "{tool}": item.get("tool_label") or item.get("tool", ""),
+    }
+    for key, value in replacements.items():
+        text = text.replace(key, value)
+    return text
+
+
+def _contains_any(text: str, patterns: list[str]) -> bool:
+    return any(pattern in text for pattern in patterns)
+
+
+def _contains_all(text: str, patterns: list[str]) -> bool:
+    return all(pattern in text for pattern in patterns)
+
+
+def _matches_any_glob(value: str, patterns: list[str]) -> bool:
+    normalized = value.replace("\\", "/").lower()
+    return any(fnmatch(normalized, pattern.lower()) for pattern in patterns)
+
+
+def _is_rule_match(item: dict, rule: dict) -> bool:
+    rule_id = (item.get("rule_id", "") or "").lower()
+    message = (item.get("message", "") or "").lower()
+    translated_message = (item.get("translated_message", "") or "").lower()
+    file_path = item.get("file", "") or ""
+    combined = "\n".join([rule_id, message, translated_message])
+
+    match_any = [token.lower() for token in rule.get("match_any", [])]
+    match_all = [token.lower() for token in rule.get("match_all", [])]
+    exclude_any = [token.lower() for token in rule.get("exclude_any", [])]
+    message_match_any = [token.lower() for token in rule.get("message_match_any", [])]
+    message_match_all = [token.lower() for token in rule.get("message_match_all", [])]
+    file_match_any = rule.get("file_match_any", [])
+    file_match_all = rule.get("file_match_all", [])
+
+    if match_any and not _contains_any(combined, match_any):
+        return False
+    if match_all and not _contains_all(combined, match_all):
+        return False
+    if exclude_any and _contains_any(combined, exclude_any):
+        return False
+    if message_match_any and not _contains_any(message, message_match_any):
+        return False
+    if message_match_all and not _contains_all(message, message_match_all):
+        return False
+    if file_match_any and not _matches_any_glob(file_path, file_match_any):
+        return False
+    if file_match_all and not all(fnmatch(file_path.replace("\\", "/").lower(), pattern.lower()) for pattern in file_match_all):
+        return False
+    return True
+
+
+def _match_fix_suggestion_rule(item: dict, rules: list[dict]) -> dict | None:
+    code_context = item.get("code", "").strip()
+    for rule in rules:
+        if not _is_rule_match(item, rule):
+            continue
+        suggestion = rule.get("fix_suggestion")
+        if not isinstance(suggestion, dict):
+            continue
+        return {
+            "title": _resolve_template_placeholders(suggestion.get("title", ""), item, code_context),
+            "why_risky": _resolve_template_placeholders(suggestion.get("why_risky", ""), item, code_context),
+            "recommended_fix": _resolve_template_placeholders(suggestion.get("recommended_fix", ""), item, code_context),
+            "before_example": _resolve_template_placeholders(suggestion.get("before_example", ""), item, code_context),
+            "after_example": _resolve_template_placeholders(suggestion.get("after_example", ""), item, code_context),
+        }
+    return None
 
 
 def render_report(items: list[dict], output_path: Path, template_dir: Path) -> Path:
-    environment = Environment(loader=FileSystemLoader(str(template_dir)))
+    environment = Environment(
+        loader=FileSystemLoader(str(template_dir)),
+        autoescape=True,
+    )
     template = environment.get_template("report.html.j2")
+    issue_rules = _load_issue_rules(template_dir)
 
     severity_order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
     sorted_items = sorted(
@@ -208,12 +348,45 @@ def render_report(items: list[dict], output_path: Path, template_dir: Path) -> P
             item.get("line", 0),
         ),
     )
+    translations = translate_issue_messages(
+        [item.get("message", "") for item in items],
+        cache_path=output_path.parent / "message_translations_cache.json",
+    )
+    _apply_translations(items, translations)
     top_issues = sorted_items[:50]
+    ai_fix_targets: list[dict] = []
     for item in top_issues:
-        item["fix_suggestion"] = _build_fix_suggestion(item)
+        _decorate_item(item)
+        fix_suggestion = _match_fix_suggestion_rule(item, issue_rules)
+        if fix_suggestion is not None:
+            item["fix_suggestion"] = fix_suggestion
+        else:
+            ai_fix_targets.append(item)
+
+    ai_fix_suggestions = generate_fix_suggestions(
+        ai_fix_targets,
+        cache_path=output_path.parent / "fix_suggestions_cache.json",
+    )
+    for item in ai_fix_targets:
+        suggestion = ai_fix_suggestions.get(_issue_signature(item), {})
+        if suggestion and all(suggestion.get(field) for field in ["title", "why_risky", "recommended_fix", "before_example", "after_example"]):
+            item["fix_suggestion"] = suggestion
+        else:
+            item["fix_suggestion"] = _fallback_fix_suggestion(item)
 
     summary = _build_summary(items)
+    summary["severity_labels"] = {
+        "HIGH": _severity_label("HIGH"),
+        "MEDIUM": _severity_label("MEDIUM"),
+        "LOW": _severity_label("LOW"),
+    }
+    summary["tool_labels"] = {
+        tool: _tool_label(tool) for tool in summary["tool"].keys()
+    }
     rule_groups = _build_rule_groups(items)
+    for group in rule_groups:
+        message = (group.get("message") or "").strip()
+        group["translated_message"] = translations.get(message, message)
     recommendations = _build_recommendations(rule_groups)
     data = {
         "summary": summary,

@@ -10,7 +10,7 @@ def _resolve_command(program: str, module: str | None = None) -> list[str]:
         return [program]
     if module:
         return [sys.executable, "-m", module]
-    raise FileNotFoundError(f"Command not found: {program}")
+    raise FileNotFoundError(f"명령어를 찾을 수 없습니다: {program}")
 
 
 def _run_command(command: list[str], cwd: Path, output_path: Path) -> Path:
@@ -92,7 +92,7 @@ def run_eslint(repo_path: Path, output_path: Path) -> Path:
     elif npx_path:
         base_command = [npx_path, "eslint"]
     else:
-        raise FileNotFoundError("Command not found: eslint or npx")
+        raise FileNotFoundError("명령어를 찾을 수 없습니다: eslint 또는 npx")
 
     config_exists = _has_eslint_config(repo_path)
     temp_config = None

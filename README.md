@@ -35,20 +35,42 @@ copy .env.example .env
 
 ## 실행
 
-```bash
-python .\app\main.py https://github.com/example/repo.git
+운영체제와 셸 환경에 따라 실행 파일이 다릅니다.
+
+### Windows PowerShell
+
+Windows에서는 `run.ps1` 사용을 권장합니다.
+
+```powershell
+.\run.ps1 https://github.com/example/repo.git
 ```
 
-또는 GitHub 리포지토리와 브랜치를 함께 지정:
+브랜치를 지정하려면:
 
-```bash
-python .\app\main.py https://github.com/example/repo.git --branch main
+```powershell
+.\run.ps1 https://github.com/example/repo.git main
 ```
 
-`run.sh`를 사용할 경우:
+### Linux / macOS / WSL / Git Bash
+
+bash 환경에서는 `run.sh`를 사용할 수 있습니다.
 
 ```bash
-bash .\run.sh https://github.com/example/repo.git
+./run.sh https://github.com/example/repo.git
+```
+
+브랜치를 지정하려면:
+
+```bash
+./run.sh https://github.com/example/repo.git main
+```
+
+### 직접 Python으로 실행
+
+스크립트를 사용하지 않고 직접 실행할 수도 있습니다.
+
+```bash
+python app/main.py https://github.com/example/repo.git --branch main
 ```
 
 ## 출력
@@ -62,6 +84,76 @@ bash .\run.sh https://github.com/example/repo.git
 ## AI 요약
 
 `.env`에 `OPENAI_API_KEY`를 추가하면 AI가 리포트 결과를 요약하여 `output/report.html`에 포함합니다. 키가 없으면 AI 요약은 생략됩니다.
+
+## 규칙 관리
+
+리포트의 심각도 보정과 수정 제안은 `templates/issue_rules.json` 파일에서 함께 관리합니다.
+
+각 규칙은 다음 역할을 동시에 가질 수 있습니다.
+
+- 심각도 보정 (`severity`)
+- 수정 제안 템플릿 (`fix_suggestion`)
+- 매칭 조건 정의 (`match_any`, `match_all`, `file_match_any` 등)
+
+### 주요 필드
+
+- `id`: 규칙 식별자
+- `priority`: 숫자가 작을수록 먼저 매칭
+- `tool`: 특정 도구에만 적용할 때 사용 (`semgrep`, `eslint`, `bandit`)
+- `match_any`: `rule_id` 또는 메시지에 하나라도 포함되면 매칭
+- `match_all`: 모두 포함되어야 매칭
+- `exclude_any`: 포함되면 매칭 제외
+- `message_match_any`: 원문 메시지 기준 부분 매칭
+- `message_match_all`: 원문 메시지 기준 전체 조건 매칭
+- `file_match_any`: 파일 경로 glob 매칭
+- `severity`: `HIGH`, `MEDIUM`, `LOW`
+- `fix_suggestion`: 리포트에 표시할 수정 제안 템플릿
+
+### `fix_suggestion` 필드
+
+- `title`
+- `why_risky`
+- `recommended_fix`
+- `before_example`
+- `after_example`
+
+### 사용할 수 있는 플레이스홀더
+
+- `{code_context}`
+- `{message}`
+- `{raw_message}`
+- `{file}`
+- `{line}`
+- `{rule_id}`
+- `{severity}`
+- `{tool}`
+
+### 규칙 추가 예시
+
+```json
+{
+  "id": "example_rule",
+  "priority": 100,
+  "tool": "semgrep",
+  "match_any": ["example-rule-id", "dangerous pattern"],
+  "file_match_any": ["*.ts", "*.tsx"],
+  "severity": "HIGH",
+  "fix_suggestion": {
+    "title": "위험한 패턴을 안전한 방식으로 변경",
+    "why_risky": "{tool}가 감지한 이 패턴은 권한 상승 또는 정보 노출로 이어질 수 있습니다.",
+    "recommended_fix": "문제 패턴을 제거하고 검증된 안전 API로 대체하세요.",
+    "before_example": "{code_context}",
+    "after_example": "// 안전한 대체 코드 예시"
+  }
+}
+```
+
+### 운영 원칙
+
+- 구체적인 규칙은 `priority`를 더 낮게 두고, 범용 fallback 규칙은 뒤에 배치하세요.
+- 심각도만 보정하고 싶으면 `severity`만 넣어도 됩니다.
+- 수정 제안만 추가하고 싶으면 `fix_suggestion`만 넣어도 됩니다.
+- 새 규칙을 추가한 뒤 리포트를 다시 생성하면 즉시 반영됩니다.
 
 ## 주의
 

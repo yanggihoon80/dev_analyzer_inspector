@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 
 try:
@@ -31,9 +32,9 @@ def main() -> None:
         try:
             return func(*args)
         except FileNotFoundError as error:
-            print(f"Warning: {tool_name} skipped - {error}")
+            print(f"경고: {tool_name} 실행을 건너뜁니다 - {error}")
         except RuntimeError as error:
-            print(f"Warning: {tool_name} failed - {error}")
+            print(f"경고: {tool_name} 실행 실패 - {error}")
         return None
 
     tool_outputs = {}
@@ -58,14 +59,21 @@ def main() -> None:
         Path(__file__).resolve().parent.parent / "templates",
     )
 
-    print("Analysis completed successfully.")
-    print(f"Merged JSON report: {output_dir / 'merged_report.json'}")
-    print(f"HTML report: {output_dir / 'report.html'}")
+    print("분석이 성공적으로 완료되었습니다.")
+    print(f"통합 JSON 리포트: {output_dir / 'merged_report.json'}")
+    print(f"HTML 리포트: {output_dir / 'report.html'}")
     if tool_outputs:
-        print(f"Tools executed: {', '.join(sorted(tool_outputs.keys()))}")
+        print(f"실행된 도구: {', '.join(sorted(tool_outputs.keys()))}")
     else:
-        print("No static analysis tool output files were generated.")
+        print("생성된 정적 분석 결과 파일이 없습니다.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("오류: 사용자에 의해 실행이 중단되었습니다.", file=sys.stderr)
+        raise SystemExit(130)
+    except Exception as error:
+        print(f"오류: {error}", file=sys.stderr)
+        raise SystemExit(1)

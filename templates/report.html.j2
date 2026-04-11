@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <title>Dev Analyzer Inspector Report</title>
+  <title>Dev Analyzer Inspector 분석 리포트</title>
   <style>
     body { font-family: Inter, Arial, sans-serif; margin: 24px; background: #f4f5f7; color: #1f2937; }
     h1, h2, h3 { color: #111827; margin-top: 0; }
@@ -20,6 +20,12 @@
     .table { width: 100%; border-collapse: collapse; margin-top: 16px; }
     .table th, .table td { border: 1px solid #e5e7eb; padding: 12px; text-align: left; vertical-align: top; word-wrap: break-word; overflow-wrap: anywhere; }
     .table th { background: #f9fafb; font-weight: 700; }
+    .col-tool { width: 140px; min-width: 140px; }
+    .col-severity { width: 120px; min-width: 120px; }
+    .col-affected-files { width: 130px; min-width: 130px; }
+    .col-count { width: 80px; min-width: 80px; }
+    .col-index { width: 70px; min-width: 70px; }
+    .col-line { width: 90px; min-width: 90px; }
     .section-title { margin-top: 40px; margin-bottom: 16px; }
     .code-block { background: #0f172a; color: #e2e8f0; padding: 14px; border-radius: 10px; font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace; white-space: pre-wrap; word-break: break-word; border: 1px solid #cbd5e1; }
     .metadata { color: #6b7280; font-size: 0.95rem; margin-top: 6px; word-wrap: break-word; overflow-wrap: anywhere; }
@@ -38,8 +44,14 @@
     .summary-list { list-style: none; padding: 0; margin: 0; }
     .summary-list li { margin-bottom: 6px; }
     .ai-summary-card { overflow: hidden; }
+    .ai-summary-content, .ai-summary-content > div, .ai-summary-content > section { width: 100%; max-width: 100%; box-sizing: border-box; }
     .ai-summary-content p { margin: 0 0 10px; line-height: 1.7; }
     .ai-summary-content ul, .ai-summary-content ol { margin: 0 0 10px 20px; }
+    .ai-summary-content table { width: 100%; max-width: 100%; border-collapse: collapse; table-layout: fixed; margin-top: 12px; display: table; }
+    .ai-summary-content th, .ai-summary-content td { border: 1px solid #e5e7eb; padding: 10px; text-align: left; vertical-align: top; word-break: break-word; overflow-wrap: anywhere; }
+    .ai-summary-content th { background: #f8fafc; }
+    .ai-summary-content tbody, .ai-summary-content thead, .ai-summary-content tr { width: 100%; }
+    .ai-summary-content span, .ai-summary-content strong, .ai-summary-content em { max-width: 100%; }
     .ai-summary-fallback { color: #7f1d1d; }
     .metadata { color: #6b7280; font-size: 0.95rem; margin-top: 6px; }
     .priority-reason { color: #374151; font-size: 0.95rem; margin-top: 6px; }
@@ -47,7 +59,7 @@
 </head>
 <body>
   <div class="page-header">
-    <h1>Dev Analyzer Inspector Report</h1>
+    <h1>Dev Analyzer Inspector 분석 리포트</h1>
     <p>자동 생성된 정적 분석 결과를 개발자에게 보기 쉽게 정리합니다.</p>
   </div>
 
@@ -58,16 +70,16 @@
       <p class="stat-label">전체 이슈 수</p>
     </div>
     <div class="card">
-      <h2>Severity Breakdown</h2>
-      <p class="badge badge-high">HIGH {{ data.summary.severity.HIGH }}</p>
-      <p class="badge badge-medium">MEDIUM {{ data.summary.severity.MEDIUM }}</p>
-      <p class="badge badge-low">LOW {{ data.summary.severity.LOW }}</p>
+      <h2>심각도 분포</h2>
+      <p class="badge badge-high">{{ data.summary.severity_labels.HIGH }} {{ data.summary.severity.HIGH }}</p>
+      <p class="badge badge-medium">{{ data.summary.severity_labels.MEDIUM }} {{ data.summary.severity.MEDIUM }}</p>
+      <p class="badge badge-low">{{ data.summary.severity_labels.LOW }} {{ data.summary.severity.LOW }}</p>
     </div>
     <div class="card">
-      <h2>Tool Breakdown</h2>
+      <h2>도구별 분포</h2>
       <ul class="summary-list">
         {% for tool, count in data.summary.tool.items() %}
-        <li>{{ tool }}: {{ count }}</li>
+        <li>{{ data.summary.tool_labels.get(tool, tool) }}: {{ count }}</li>
         {% endfor %}
       </ul>
     </div>
@@ -75,8 +87,8 @@
       <h2>가장 위험한 이슈</h2>
       {% if data.summary.top_risky_issue %}
       <p><strong>{{ data.summary.top_risky_issue.rule_id }}</strong></p>
-      <p class="metadata">{{ data.summary.top_risky_issue.file }}:{{ data.summary.top_risky_issue.line }} ({{ data.summary.top_risky_issue.severity }})</p>
-      <p>{{ data.summary.top_risky_issue.message }}</p>
+      <p class="metadata">{{ data.summary.top_risky_issue.file }}:{{ data.summary.top_risky_issue.line }} ({{ data.summary.top_risky_issue.severity_label }}, {{ data.summary.top_risky_issue.tool_label }})</p>
+      <p>{{ data.summary.top_risky_issue.translated_message }}</p>
       {% else %}
       <p>분석 결과가 없습니다.</p>
       {% endif %}
@@ -103,46 +115,46 @@
   </div>
   {% endif %}
 
-  <h2 class="section-title">Issue Group Summary</h2>
+  <h2 class="section-title">이슈 그룹 요약</h2>
   <div class="card">
     <table class="table">
       <thead>
         <tr>
-          <th>Rule</th>
-          <th>Severity</th>
-          <th>Count</th>
-          <th>Files</th>
-          <th>Tools</th>
-          <th>Representative Message</th>
+          <th>규칙</th>
+          <th class="col-severity">심각도</th>
+          <th class="col-count">건수</th>
+          <th class="col-affected-files">영향 파일 수</th>
+          <th class="col-tool">도구</th>
+          <th>대표 메시지</th>
         </tr>
       </thead>
       <tbody>
         {% for group in data.rule_groups %}
         <tr>
           <td>{{ group.rule_id }}</td>
-          <td class="severity-{{ group.severity }}">{{ group.severity }}</td>
-          <td>{{ group.count }}</td>
-          <td>{{ group.affected_files }}</td>
-          <td>{{ group.tools | join(', ') }}</td>
-          <td>{{ group.message }}</td>
+          <td class="severity-{{ group.severity }}">{{ group.severity_label }}</td>
+          <td class="col-count">{{ group.count }}</td>
+          <td class="col-affected-files">{{ group.affected_files }}</td>
+          <td>{{ group.tool_labels | join(', ') }}</td>
+          <td>{{ group.translated_message }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 
-  <h2 class="section-title">Recommended Fix Order</h2>
+  <h2 class="section-title">권장 수정 우선순위</h2>
   <div class="card">
     <table class="table">
       <thead>
         <tr>
-          <th>Rank</th>
-          <th>Rule</th>
-          <th>Category</th>
-          <th>Severity</th>
-          <th>Files</th>
-          <th>Count</th>
-          <th>Why fix first</th>
+          <th>우선순위</th>
+          <th>규칙</th>
+          <th>분류</th>
+          <th class="col-severity">심각도</th>
+          <th>영향 파일 수</th>
+          <th>건수</th>
+          <th>우선 수정 이유</th>
         </tr>
       </thead>
       <tbody>
@@ -150,8 +162,8 @@
         <tr>
           <td>{{ item.rank }}</td>
           <td>{{ item.rule_id }}</td>
-          <td>{{ item.category }}</td>
-          <td class="severity-{{ item.severity }}">{{ item.severity }}</td>
+          <td>{{ item.category_label }}</td>
+          <td class="severity-{{ item.severity }}">{{ item.severity_label }}</td>
           <td>{{ item.affected_files }}</td>
           <td>{{ item.count }}</td>
           <td class="priority-reason">{{ item.reason }}</td>
@@ -161,30 +173,30 @@
     </table>
   </div>
 
-  <h2 class="section-title">Top Issues</h2>
+  <h2 class="section-title">주요 이슈</h2>
   <div class="card">
     <table class="table">
       <thead>
         <tr>
-          <th>#</th>
-          <th>Tool</th>
-          <th>Severity</th>
-          <th>Rule</th>
-          <th>File</th>
-          <th>Line</th>
-          <th>Message</th>
+          <th class="col-index">#</th>
+          <th class="col-tool">도구</th>
+          <th class="col-severity">심각도</th>
+          <th>규칙</th>
+          <th>파일</th>
+          <th class="col-line">줄</th>
+          <th>메시지</th>
         </tr>
       </thead>
       <tbody>
         {% for item in data.issues %}
         <tr>
-          <td>{{ loop.index }}</td>
-          <td>{{ item.tool }}</td>
-          <td class="severity-{{ item.severity }}">{{ item.severity }}</td>
+          <td class="col-index">{{ loop.index }}</td>
+          <td>{{ item.tool_label }}</td>
+          <td class="severity-{{ item.severity }}">{{ item.severity_label }}</td>
           <td>{{ item.rule_id }}</td>
           <td>{{ item.file }}</td>
-          <td>{{ item.line }}</td>
-          <td>{{ item.message }}</td>
+          <td class="col-line">{{ item.line }}</td>
+          <td>{{ item.translated_message }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -192,32 +204,31 @@
   </div>
 
   {% if data.ai_summary_html %}
-  <h2 class="section-title">AI Summary</h2>
+  <h2 class="section-title">AI 요약</h2>
   <div class="card ai-summary-card">
     <div class="ai-summary-content">{{ data.ai_summary_html | safe }}</div>
   </div>
   {% endif %}
 
-  <h2 class="section-title">Issue Code Sample</h2>
+  <h2 class="section-title">이슈 코드 샘플</h2>
   {% for item in data.issues %}
   <div class="card">
-    <h3>{{ loop.index }}. {{ item.file }}:{{ item.line }} ({{ item.tool }})</h3>
-    <p class="metadata">{{ item.rule_id }} — {{ item.severity }}</p>
+    <h3>{{ loop.index }}. {{ item.file }}:{{ item.line }} ({{ item.tool_label }})</h3>
+    <p class="metadata">{{ item.rule_id }}</p>
     <details class="accordion-details">
-      <summary><span>코드 샘플 & Fix Suggestion 열기</span><strong>▼</strong></summary>
+      <summary><span>코드 샘플 및 수정 제안 열기</span><strong>▼</strong></summary>
       <div class="accordion-content">
-        <div class="code-block">{{ item.code or "코드 정보 없음" }}</div>
         {% if item.fix_suggestion %}
         <div class="fix-suggestion">
-          <h4>Fix Suggestion: {{ item.fix_suggestion.title }}</h4>
-          <p><strong>Why this is risky:</strong> {{ item.fix_suggestion.why_risky }}</p>
-          <p><strong>Recommended fix:</strong> {{ item.fix_suggestion.recommended_fix }}</p>
+          <h4>수정 제안: {{ item.fix_suggestion.title }}</h4>
+          <p><strong>위험한 이유:</strong> {{ item.fix_suggestion.why_risky }}</p>
+          <p><strong>권장 수정 방법:</strong> {{ item.fix_suggestion.recommended_fix }}</p>
           <div class="fix-suggestion-code">
-            <p><strong>Example before</strong></p>
-            <div class="code-block">{{ item.fix_suggestion.before_example }}</div>
+            <p><strong>수정 전 예시</strong></p>
+            <div class="code-block">{{ item.code or item.fix_suggestion.before_example or "코드 정보 없음" }}</div>
           </div>
           <div class="fix-suggestion-code">
-            <p><strong>Example after</strong></p>
+            <p><strong>수정 후 예시</strong></p>
             <div class="code-block">{{ item.fix_suggestion.after_example }}</div>
           </div>
         </div>

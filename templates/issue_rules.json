@@ -1,0 +1,134 @@
+[
+  {
+    "id": "docker_missing_user",
+    "priority": 10,
+    "tool": "semgrep",
+    "match_any": ["missing-user", "dockerfile"],
+    "file_match_any": ["*Dockerfile", "*dockerfile"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "Dockerfile 마지막 단계에서 비root 사용자로 실행",
+      "why_risky": "컨테이너가 root 권한으로 실행되면 애플리케이션 취약점이 컨테이너 전체 권한 상승으로 이어질 수 있고, 파일 시스템이나 런타임 설정 변경 위험도 커집니다.",
+      "recommended_fix": "이미지 빌드 과정에서 전용 사용자와 그룹을 만들고, 애플리케이션 실행 직전에 `USER`를 명시하세요. Node 공식 이미지처럼 기본 사용자가 있는 경우 해당 사용자를 재사용해도 됩니다.",
+      "before_example": "CMD [\"node\", \"dist/main\"]",
+      "after_example": "RUN addgroup --system app && adduser --system --ingroup app app\nRUN chown -R app:app /app\nUSER app\nCMD [\"node\", \"dist/main\"]"
+    }
+  },
+  {
+    "id": "wildcard_postmessage",
+    "priority": 20,
+    "tool": "semgrep",
+    "match_any": ["wildcard-postmessage-configuration", "wildcard-postmessage"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "postMessage에 명시적 origin 사용",
+      "why_risky": "'*'를 사용하면 모든 origin이 메시지를 받을 수 있어 민감 데이터가 노출될 수 있습니다.",
+      "recommended_fix": "신뢰할 수 있는 origin 값을 명시적으로 지정하고, 가능한 경우 상수 또는 설정으로 분리하세요.",
+      "before_example": "window.opener.postMessage(data, \"*\")",
+      "after_example": "window.opener.postMessage(data, \"https://trusted.example.com\")"
+    }
+  },
+  {
+    "id": "generic_api_key",
+    "priority": 30,
+    "tool": "semgrep",
+    "match_any": ["detected-generic-api-key", "generic-api-key"],
+    "file_match_any": ["*.js", "*.jsx", "*.ts", "*.tsx"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "비밀 정보는 하드코딩하지 마세요",
+      "why_risky": "코드에 포함된 API 키는 저장소, 로그, 번들, 스크린샷을 통해 쉽게 유출될 수 있습니다.",
+      "recommended_fix": "민감한 키는 환경 변수 또는 서버 보관소로 이동하고, 프런트엔드 번들에는 노출하지 마세요.",
+      "before_example": "apiKey=\"hardcoded-secret\"",
+      "after_example": "apiKey={process.env.NEXT_PUBLIC_EDITOR_API_KEY}"
+    }
+  },
+  {
+    "id": "non_literal_regexp",
+    "priority": 40,
+    "tool": "semgrep",
+    "match_any": ["detect-non-literal-regexp", "non-literal-regexp", "redos"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "사용자 입력 RegExp를 안전하게 처리",
+      "why_risky": "비리터럴 RegExp는 사용자 입력에 의해 생성될 때 ReDoS를 일으킬 수 있습니다.",
+      "recommended_fix": "사용자 입력을 정규식에 직접 결합하지 말고 먼저 escape한 뒤 사용하세요. 가능한 경우에는 `RegExp` 생성 대신 `includes`, `replaceAll`, 사전 정의된 패턴 등 정적인 문자열 연산으로 바꾸는 편이 더 안전합니다.",
+      "before_example": "new RegExp(term + \",?\", \"g\")",
+      "after_example": "const safeTerm = escapeRegExp(term);\nupdatedSubsidyType = updatedSubsidyType?.replace(new RegExp(`${safeTerm},?`, 'g'), '') || null;\n\nfunction escapeRegExp(value) {\n  return value.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n}"
+    }
+  },
+  {
+    "id": "nginx_h2c_smuggling",
+    "priority": 50,
+    "tool": "semgrep",
+    "match_any": ["possible-nginx-h2c-smuggling", "possible-h2c-smuggling"],
+    "file_match_any": ["*.conf", "*.nginx", "*nginx*"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "Nginx 업그레이드 헤더를 최소 허용으로 제한",
+      "why_risky": "광범위한 `Upgrade`/`Connection` 전달은 프록시 뒤 백엔드로 예상하지 않은 프로토콜 업그레이드를 허용해 H2C 스머글링이나 접근통제 우회를 유발할 수 있습니다.",
+      "recommended_fix": "WebSocket이 필요한 경로에서만 업그레이드 헤더를 허용하고, 그 외 경로에서는 `Upgrade`와 `Connection`을 제거하거나 빈 값으로 덮어쓰세요. 가능한 경우 해당 location을 명시적으로 분리하세요.",
+      "before_example": "proxy_http_version 1.1;\nproxy_set_header Upgrade $http_upgrade;\nproxy_set_header Connection 'upgrade';",
+      "after_example": "location /socket/ {\n    proxy_http_version 1.1;\n    proxy_set_header Upgrade $http_upgrade;\n    proxy_set_header Connection \"websocket\";\n    proxy_set_header Host $host;\n    proxy_pass http://web_upstream;\n}\n\nlocation / {\n    proxy_set_header Upgrade \"\";\n    proxy_set_header Connection \"\";\n    proxy_set_header Host $host;\n    proxy_pass http://web_upstream;\n}"
+    }
+  },
+  {
+    "id": "nginx_header_redefinition",
+    "priority": 60,
+    "tool": "semgrep",
+    "match_all": ["header-redefinition", "nginx"],
+    "file_match_any": ["*.conf", "*.nginx", "*nginx*"],
+    "severity": "MEDIUM",
+    "fix_suggestion": {
+      "title": "Nginx `add_header`는 한 레벨에서 일관되게 관리",
+      "why_risky": "`location` 블록의 `add_header`는 상위 `server` 블록에서 설정한 헤더를 상속하지 않고 덮어쓸 수 있어, 보안 헤더 일부가 누락될 수 있습니다.",
+      "recommended_fix": "보안 헤더를 `server` 블록에 모아 선언하거나, `location` 블록에서 `add_header`를 써야 한다면 필요한 헤더를 전부 다시 선언하세요.",
+      "before_example": "server {\n    add_header X-Frame-Options SAMEORIGIN;\n\n    location / {\n        add_header Content-Type text/plain;\n    }\n}",
+      "after_example": "server {\n    add_header X-Frame-Options SAMEORIGIN always;\n    add_header X-Content-Type-Options nosniff always;\n\n    location /health {\n        default_type text/plain;\n        return 200 'ok';\n    }\n}"
+    }
+  },
+  {
+    "id": "child_process_command",
+    "priority": 70,
+    "tool": "semgrep",
+    "match_any": ["detect-child-process", "child_process", "command injection"],
+    "file_match_any": ["*.js", "*.jsx", "*.ts", "*.tsx", "*.mjs", "*.cjs"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "쉘 명령 실행 시 사용자 입력을 직접 전달하지 마세요",
+      "why_risky": "사용자 입력이 `spawn`, `exec`, `execFile` 등에 직접 연결되면 명령 주입으로 이어질 수 있고, 서버 권한으로 임의 명령 실행이 발생할 수 있습니다.",
+      "recommended_fix": "가능하면 쉘 호출 자체를 제거하고 내부 라이브러리 API로 대체하세요. 꼭 필요하다면 허용된 명령만 화이트리스트로 매핑하고, 인자도 사전 검증 후 배열 형태로 전달하세요. `exec`보다 `spawn`/`execFile`을 우선 사용하고 `shell: true`는 피하세요.",
+      "before_example": "const proc = spawn(command, args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] });",
+      "after_example": "const allowedCommands = {\n  semgrep: 'semgrep',\n  eslint: 'eslint',\n};\n\nconst safeCommand = allowedCommands[toolName];\nif (!safeCommand) {\n  throw new Error('허용되지 않은 명령입니다.');\n}\n\nconst safeArgs = validateArgs(args);\nconst proc = spawn(safeCommand, safeArgs, {\n  cwd,\n  shell: false,\n  stdio: ['pipe', 'pipe', 'pipe'],\n});"
+    }
+  },
+  {
+    "id": "aws_access_key",
+    "priority": 80,
+    "tool": "semgrep",
+    "match_any": ["detected-aws-access-key-id-value", "aws access key"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "클라우드 자격 증명은 즉시 회수하고 교체하세요",
+      "why_risky": "클라우드 액세스 키가 노출되면 외부에서 직접 계정 자원에 접근하거나 과금, 데이터 유출, 인프라 변조로 이어질 수 있습니다.",
+      "recommended_fix": "노출된 키를 즉시 폐기하고 새 키를 발급한 뒤, 애플리케이션에는 환경 변수나 비밀 저장소를 통해 주입하세요. 커밋 히스토리와 배포 로그에서 노출 여부도 함께 점검하세요.",
+      "before_example": "{code_context}",
+      "after_example": "AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}\nAWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}"
+    }
+  },
+  {
+    "id": "frontend_secret_fallback",
+    "priority": 200,
+    "message_match_any": ["api key", "hardcoded", "credential", "secret"],
+    "file_match_any": ["*.js", "*.jsx", "*.ts", "*.tsx"],
+    "exclude_any": ["aws access key"],
+    "severity": "HIGH",
+    "fix_suggestion": {
+      "title": "클라이언트 코드에 민감 정보를 직접 두지 마세요",
+      "why_risky": "{tool}가 감지한 민감 정보가 프런트엔드 코드에 남아 있으면 번들, 브라우저 개발자 도구, 로그, 소스맵을 통해 쉽게 노출될 수 있습니다.",
+      "recommended_fix": "민감한 값은 서버 측 비밀 저장소나 환경 변수로 이동하고, 클라이언트에는 필요한 최소 정보만 전달하세요.",
+      "before_example": "{code_context}",
+      "after_example": "// 서버에서 안전하게 읽은 값을 사용하거나\nconst publicConfig = {\n  editorKey: process.env.NEXT_PUBLIC_EDITOR_API_KEY,\n};"
+    }
+  }
+]
