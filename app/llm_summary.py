@@ -22,6 +22,44 @@ def _get_openai_key() -> str | None:
     return os.getenv("OPENAI_API_KEY")
 
 
+def _is_ai_enabled() -> bool:
+    value = (os.getenv("AI_REPORT_ENABLED", "true") or "").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def generate_api_test_summary(api_tab: dict[str, Any]) -> str:
+    if not _is_ai_enabled():
+        return "<div class='ai-summary-fallback'><p>AI summary disabled: AI_REPORT_ENABLED=false</p></div>"
+
+    if OpenAI is None:
+        return "<div class='ai-summary-fallback'><p>AI summary unavailable: openai package is not installed.</p></div>"
+
+    api_key = _get_openai_key()
+    if not api_key:
+        return "<div class='ai-summary-fallback'><p>AI summary unavailable: OPENAI_API_KEY is not configured.</p></div>"
+
+    prompt = _build_api_test_prompt(api_tab)
+    client = OpenAI(api_key=api_key)
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a helpful API quality report assistant. Reply in Korean with only 3 to 4 short narrative sentences. Do not use bullets, numbering, headings, markdown, or HTML.",
+                },
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=180,
+            temperature=0.3,
+        )
+        content = response.choices[0].message.content.strip()
+        return _render_markdown(content)
+    except Exception as error:
+        return f"<div class='ai-summary-fallback'><p>AI summary unavailable: {html.escape(str(error))}</p></div>"
+
+
 def _build_prompt(items: list[dict], summary: dict) -> str:
     top_items = items[:10]
     lines = [
@@ -51,6 +89,57 @@ def _build_prompt(items: list[dict], summary: dict) -> str:
         "3. 개발팀을 위한 권장 조치", 
         "4. 간단한 시각적 요약 (예: div, ul, li, span 기반 막대/배지 표현)",
         "5. 모든 문장은 한국어로 작성하세요.",
+    ])
+    return "\n".join(lines)
+
+
+def _build_api_test_prompt(api_tab: dict[str, Any]) -> str:
+    summary = api_tab.get("summary", {}) if isinstance(api_tab, dict) else {}
+    groups = api_tab.get("groups", []) if isinstance(api_tab, dict) else []
+    layer_groups = api_tab.get("group_layers", {}) if isinstance(api_tab, dict) else {}
+    failed_groups = layer_groups.get("failed", [])
+    skipped_groups = layer_groups.get("skipped", [])
+
+    lines = [
+        "한국어로 아주 짧은 API 테스트 요약을 작성하세요.",
+        "반드시 완전한 서술형 문장 3~4개로만 작성하세요.",
+        "불릿, 번호 목록, 제목, 표, markdown, HTML을 사용하지 마세요.",
+        "카드 안에 들어갈 짧은 보고서 문장처럼 자연스럽게 쓰세요.",
+        "각 문장은 짧고 바로 이해되게 쓰세요.",
+        "",
+        f"Total APIs: {summary.get('total', 0)}",
+        f"Executed: {summary.get('executed', 0)}",
+        f"Passed: {summary.get('passed', 0)}",
+        f"Failed: {summary.get('failed', 0)}",
+        f"Skipped: {summary.get('skipped', 0)}",
+        f"Pass rate: {summary.get('pass_rate', 0)}%",
+        "",
+        "Top failed API groups:",
+    ]
+    for index, group in enumerate(failed_groups[:5], start=1):
+        lines.append(
+            f"{index}. {group.get('method', '-')} {group.get('endpoint', '-')} "
+            f"(failed={group.get('failed', 0)}, cases={group.get('total', 0)})"
+        )
+    if not failed_groups:
+        lines.append("- None")
+
+    lines.extend(["", "Top skipped API groups:"])
+    for index, group in enumerate(skipped_groups[:3], start=1):
+        lines.append(
+            f"{index}. {group.get('method', '-')} {group.get('endpoint', '-')} "
+            f"(skipped={group.get('skipped', 0)}, cases={group.get('total', 0)})"
+        )
+    if not skipped_groups:
+        lines.append("- None")
+
+    lines.extend([
+        "",
+        "작성 규칙:",
+        "1. 전체 결과를 먼저 요약하세요.",
+        "2. 실패가 있으면 가장 중요한 실패 원인을, 실패가 없으면 가장 중요한 미실행 성격을 한 문장으로 설명하세요.",
+        "3. 마지막 문장은 짧은 권장사항이나 다음 액션으로 마무리하세요.",
+        "4. 전체 답변은 3~4문장으로 끝내세요.",
     ])
     return "\n".join(lines)
 
@@ -280,6 +369,9 @@ def translate_issue_messages(messages: list[str], cache_path: Path | None = None
     if not missing_messages:
         return {message: cache[message] for message in unique_messages}
 
+    if not _is_ai_enabled():
+        return {message: cache.get(message, message) for message in unique_messages}
+
     if OpenAI is None:
         return {message: cache.get(message, message) for message in unique_messages}
 
@@ -343,7 +435,7 @@ def generate_fix_suggestions(items: list[dict[str, Any]], cache_path: Path | Non
         cache = _load_json_cache(cache_path)
 
     missing_items = [item for item in normalized_items if item["issue_id"] not in cache]
-    if missing_items and OpenAI is not None and _get_openai_key():
+    if missing_items and _is_ai_enabled() and OpenAI is not None and _get_openai_key():
         prompt = _build_fix_suggestion_prompt(missing_items)
         client = OpenAI(api_key=_get_openai_key())
         try:
@@ -388,6 +480,9 @@ def generate_fix_suggestions(items: list[dict[str, Any]], cache_path: Path | Non
 
 
 def generate_ai_summary(items: list[dict], summary: dict) -> str:
+    if not _is_ai_enabled():
+        return "<div class='ai-summary-fallback'><p>AI 요약 사용 안 함: .env의 AI_REPORT_ENABLED=false 로 설정되어 있습니다.</p></div>"
+
     if OpenAI is None:
         return "<div class='ai-summary-fallback'><p>AI 요약을 생성할 수 없습니다: openai 패키지가 설치되지 않았습니다.</p></div>"
 

@@ -1,6 +1,4 @@
 from pathlib import Path
-import os
-import shutil
 import subprocess
 
 
@@ -14,10 +12,7 @@ def clone_repo(repo_url: str, branch: str = "main", workspace_dir: str = "worksp
 
     destination = workspace / repo_name
     if destination.exists():
-        counter = 1
-        while destination.exists():
-            destination = workspace / f"{repo_name}_{counter}"
-            counter += 1
+        return destination
 
     command = ["git", "clone", "--branch", branch, "--single-branch", repo_url, str(destination)]
     try:

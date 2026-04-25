@@ -1,0 +1,24 @@
+{
+  "industry": [
+    {
+      "name": "IT/소프트웨어",
+      "code": "IT",
+      "description": "IT 및 소프트웨어 산업"
+    },
+    {
+      "name": "법률/로펌",
+      "code": "LAW",
+      "description": "법률 서비스 및 로펌"
+    }
+  ],
+  "agreement": [
+    {
+      "type": "TERMS",
+      "version": 1
+    },
+    {
+      "type": "PRIVACY",
+      "version": 1
+    }
+  ]
+}

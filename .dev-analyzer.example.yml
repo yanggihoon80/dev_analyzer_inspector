@@ -1,0 +1,39 @@
+api_test:
+  enabled: true
+  runner: newman
+  start_command: "npm run dev"
+  start_cwd: "."
+  base_url: "http://127.0.0.1:3000"
+  runtime:
+    node_env: "test"
+    port: 3000
+  database:
+    type: "postgresql"
+    url: ""
+    host: "127.0.0.1"
+    port: 5432
+    name: "app_test"
+    user: "app"
+    password: "app_password"
+    init:
+      enabled: true
+      mode: "db_push"
+      seed: false
+  redis:
+    host: "127.0.0.1"
+    port: 6379
+  docker:
+    services:
+      - "db"
+      - "redis"
+    cleanup: "keep"
+  healthcheck:
+    path: "/health"
+    timeout_seconds: 60
+    interval_seconds: 2
+  env:
+    NODE_ENV: "test"
+  newman:
+    collection: "tests/postman/collection.json"
+    environment: "tests/postman/environment.json"
+    reporters: ["json"]

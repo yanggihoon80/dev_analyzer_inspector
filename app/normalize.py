@@ -113,6 +113,8 @@ def _map_category(tool: str, rule_id: str) -> str:
         return "security"
     if tool == "eslint":
         return "code_quality"
+    if tool in {"api_test", "newman"}:
+        return "api_test"
     if tool == "semgrep":
         lower_rule = rule_id.lower()
         if any(keyword in lower_rule for keyword in ["security", "sqli", "xss", "ssrf", "injection", "hardcoded"]):
@@ -207,6 +209,171 @@ def normalize_bandit(data: dict) -> list[dict]:
     return items
 
 
+def _api_test_severity(message: str, status_code: int, response_time_ms: int | None) -> str:
+    lower_message = (message or "").lower()
+    if status_code >= 500 or any(token in lower_message for token in ["timed out", "timeout", "econrefused", "unable to connect"]):
+        return "HIGH"
+    if status_code >= 400:
+        return "MEDIUM"
+    if response_time_ms is not None and response_time_ms >= 3000:
+        return "MEDIUM"
+    return "LOW"
+
+
+def _normalize_api_endpoint_for_auth(endpoint: str) -> str:
+    text = str(endpoint or "").strip()
+    if not text:
+        return ""
+    text = text.split("?", 1)[0].strip()
+    text = text.replace("{{baseUrl}}", "").replace("{{baseurl}}", "")
+    if "://" in text:
+        host_part = text.split("://", 1)[1]
+        text = "/" + host_part.split("/", 1)[1] if "/" in host_part else "/"
+    if text and not text.startswith("/"):
+        text = "/" + text
+    return text
+
+
+def _infer_api_test_role(rule_id: str, execution: dict) -> str:
+    request = execution.get("request") if isinstance(execution.get("request"), dict) else {}
+    headers = request.get("header") if isinstance(request.get("header"), list) else []
+    auth_value = ""
+    for header in headers:
+        if not isinstance(header, dict):
+            continue
+        if str(header.get("key") or "").lower() != "authorization":
+            continue
+        auth_value = str(header.get("value") or "")
+        break
+
+    combined = " ".join([str(rule_id or "").lower(), auth_value.lower()]).strip()
+    if "adminaccesstoken" in combined or "admin bearer token" in combined:
+        return "Admin"
+    if "lawyeraccesstoken" in combined or "lawyer bearer token" in combined:
+        return "Lawyer"
+    if "companyaccesstoken" in combined or "company bearer token" in combined:
+        return "Company Manager"
+    return "Public"
+
+
+def _infer_api_auth_expectation(rule_id: str) -> str | None:
+    name = str(rule_id or "").lower()
+    if any(token in name for token in ["returns forbidden", "returns unauthorized", "returns inaccessible"]):
+        return "deny"
+    if "bearer token" in name:
+        return "allow"
+    return None
+
+
+def _lookup_api_auth_expectation(matrix: dict, method: str, endpoint: str, role: str, fallback_rule_id: str) -> str | None:
+    routes = matrix.get("routes") if isinstance(matrix.get("routes"), dict) else {}
+    route = routes.get(f"{method.upper()} {endpoint}") if isinstance(routes, dict) else None
+    if isinstance(route, dict):
+        roles = route.get("roles") if isinstance(route.get("roles"), dict) else {}
+        role_entry = roles.get(role) if isinstance(roles, dict) else None
+        if isinstance(role_entry, dict):
+            expectations = role_entry.get("expectations") if isinstance(role_entry.get("expectations"), list) else []
+            if "deny" in expectations:
+                return "deny"
+            if "allow" in expectations:
+                return "allow"
+    return _infer_api_auth_expectation(fallback_rule_id)
+
+
+def _build_api_auth_failure_message(rule_id: str, execution: dict, endpoint: str, method: str, status_code: int, matrix: dict) -> str | None:
+    role = _infer_api_test_role(rule_id, execution)
+    expectation = _lookup_api_auth_expectation(matrix, method, endpoint, role, rule_id)
+    if expectation is None or role == "Public":
+        return None
+
+    if expectation == "deny" and status_code < 400:
+        return f"권한 기대 불일치: {role} 권한은 {method} {endpoint} 호출이 차단되어야 하지만 실제 {status_code} 응답으로 허용되었습니다."
+    if expectation == "allow" and status_code in {401, 403}:
+        return f"권한 기대 불일치: {role} 권한은 {method} {endpoint} 호출이 허용되어야 하지만 실제 {status_code} 응답으로 차단되었습니다."
+    if expectation == "allow" and status_code == 404:
+        return f"권한 기대 불일치: {role} 권한은 {method} {endpoint} 호출이 허용되어야 하지만 실제 404 응답을 받았습니다. 권한 은닉 정책이 적용되었거나 시드 데이터 조건이 맞지 않는지 확인이 필요합니다."
+    if expectation == "deny" and status_code >= 500:
+        return f"권한 검증 실패: {role} 권한은 {method} {endpoint} 호출이 차단되어야 하지만 차단 응답 전에 서버 오류({status_code})가 발생했습니다."
+    return None
+
+
+def normalize_api_test(data: dict) -> list[dict]:
+    report = data.get("report") if isinstance(data.get("report"), dict) else {}
+    run = report.get("run") if isinstance(report.get("run"), dict) else {}
+    executions = run.get("executions") if isinstance(run.get("executions"), list) else []
+    failures = run.get("failures") if isinstance(run.get("failures"), list) else []
+    authorization_matrix = data.get("authorization_matrix") if isinstance(data.get("authorization_matrix"), dict) else {}
+
+    execution_map: dict[str, dict] = {}
+    for execution in executions:
+        item_name = ((execution.get("item") or {}).get("name") or "").strip()
+        if item_name and item_name not in execution_map:
+            execution_map[item_name] = execution
+
+    items = []
+    for failure in failures:
+        source = failure.get("source") if isinstance(failure.get("source"), dict) else {}
+        error = failure.get("error") if isinstance(failure.get("error"), dict) else {}
+        execution = execution_map.get((source.get("name") or "").strip(), {})
+        request = execution.get("request") if isinstance(execution.get("request"), dict) else {}
+        response = execution.get("response") if isinstance(execution.get("response"), dict) else {}
+        request_url = request.get("url")
+        if isinstance(request_url, dict):
+            request_url = request_url.get("raw") or request_url.get("path")
+
+        message = (
+            error.get("test")
+            or error.get("message")
+            or ((failure.get("error") or {}).get("message") if isinstance(failure.get("error"), dict) else "")
+            or failure.get("at")
+            or "API 테스트 실패"
+        )
+        status_code = int(response.get("code") or 0)
+        response_time_ms = response.get("responseTime")
+        try:
+            response_time_ms = int(response_time_ms) if response_time_ms is not None else None
+        except (TypeError, ValueError):
+            response_time_ms = None
+
+        rule_id = (source.get("name") or execution.get("item", {}).get("name") or "api_test_failure").strip()
+        endpoint = str(request_url or "")
+        method = str(request.get("method") or "")
+        normalized_endpoint = _normalize_api_endpoint_for_auth(endpoint)
+        file_path = ""
+        if report.get("collection") and isinstance(report["collection"], dict):
+            file_path = str(((report["collection"].get("info") or {}).get("name")) or "")
+
+        auth_failure_message = _build_api_auth_failure_message(
+            rule_id,
+            execution,
+            normalized_endpoint,
+            method,
+            status_code,
+            authorization_matrix,
+        )
+        if auth_failure_message:
+            message = f"{auth_failure_message} | 원본: {message}"
+
+        items.append(
+            {
+                "tool": str(data.get("runner") or "newman"),
+                "category": _map_category("api_test", rule_id),
+                "severity": _api_test_severity(message, status_code, response_time_ms),
+                "rule_id": rule_id,
+                "file": file_path,
+                "line": 0,
+                "message": message,
+                "code": endpoint or method or "API 호출 정보 없음",
+                "endpoint": endpoint,
+                "method": method,
+                "status_code": status_code,
+                "response_time_ms": response_time_ms,
+                "test_suite": str((failure.get("parent") or {}).get("name") or ""),
+            }
+        )
+    return items
+
+
 def merge_results(tool_outputs: dict[str, Path], output_path: Path, repo_path: Path) -> list[dict]:
     all_items = []
     for tool_name, path in tool_outputs.items():
@@ -217,6 +384,8 @@ def merge_results(tool_outputs: dict[str, Path], output_path: Path, repo_path: P
             items = normalize_eslint(raw)
         elif tool_name == "bandit":
             items = normalize_bandit(raw)
+        elif tool_name == "api_test":
+            items = normalize_api_test(raw)
         else:
             items = []
         all_items.extend(items)

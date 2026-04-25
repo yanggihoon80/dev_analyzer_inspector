@@ -5,8 +5,10 @@
 ## 기능
 
 - Git 리포지토리 클론
+- `workspace/`에 동일한 이름의 리포지토리가 있으면 재사용, 없으면 클론
 - 프로젝트 유형 감지 (Python / JS)
 - Semgrep, ESLint, Bandit 실행
+- 선택적으로 Newman 기반 API 테스트 실행
 - JSON 통합 결과 생성 (`output/merged_report.json`)
 - HTML 리포트 생성 (`output/report.html`)
 
@@ -31,7 +33,17 @@ pip install -r requirements.txt
 copy .env.example .env
 ```
 
-현재는 기본 브랜치, 작업 디렉터리 설정과 OpenAI API 키를 위한 값이 포함됩니다.
+현재는 저장소 URL, 기본 브랜치, 작업 디렉터리 설정과 OpenAI API 키를 위한 값이 포함됩니다.
+`REPO_URL`, `GIT_BRANCH`, `WORKSPACE_DIR`, `OUTPUT_DIR` 는 실행 시 기본값으로 사용되며, CLI 인자를 넘기면 CLI 값이 우선합니다.
+분석 종류는 `ANALYSIS_TARGETS` 로 제어할 수 있으며 기본값은 `static,api` 입니다.
+`AI_REPORT_ENABLED` 는 AI 요약, 메시지 번역, 수정 제안 생성 사용 여부를 제어합니다.
+
+예시:
+
+- `ANALYSIS_TARGETS=static,api`: 정적 코드 분석 + API 테스트
+- `ANALYSIS_TARGETS=static`: 정적 코드 분석만 실행
+- `ANALYSIS_TARGETS=api`: API 테스트만 실행
+- `AI_REPORT_ENABLED=false`: OpenAI 기반 요약/번역/수정 제안 생성 비활성화
 
 ## 실행
 
@@ -73,13 +85,228 @@ bash 환경에서는 `run.sh`를 사용할 수 있습니다.
 python app/main.py https://github.com/example/repo.git --branch main
 ```
 
+`.env`에 `REPO_URL`이 설정되어 있으면 URL 인자 없이도 실행할 수 있습니다.
+
+```bash
+python app/main.py
+```
+
 ## 출력
 
 - `output/semgrep.json`
 - `output/eslint.json` (JS 프로젝트일 경우, ESLint 설정이 없으면 건너뜁니다)
 - `output/bandit.json` (Python 프로젝트일 경우)
+- `output/api_test.json` (API 테스트 설정이 있는 경우)
 - `output/merged_report.json`
 - `output/report.html`
+
+## API 테스트 통합
+
+분석 대상 리포지토리 루트에 `.dev-analyzer.yml` 파일을 추가하면 정적 분석과 함께 API 테스트 결과를 리포트에 포함할 수 있습니다.
+API 테스트가 활성화되어 있고 설정 파일이 없으면, 이 도구는 프로젝트 루트의 `.dev-analyzer.example.yml`을 대상 리포지토리 루트의 `.dev-analyzer.yml`로 자동 복사합니다.
+
+```yaml
+api_test:
+  enabled: true
+  runner: newman
+  start_command: "npm run dev"
+  start_cwd: "."
+  base_url: "http://127.0.0.1:3000"
+  healthcheck:
+    path: "/health"
+    timeout_seconds: 60
+    interval_seconds: 2
+  env:
+    NODE_ENV: "test"
+  newman:
+    collection: "tests/postman/collection.json"
+    environment: "tests/postman/environment.json"
+    reporters: ["json"]
+```
+
+### `.dev-analyzer.yml` 항목 설명
+
+- `api_test.enabled`
+  - API 테스트 사용 여부입니다.
+  - `true`, `false`
+
+- `api_test.runner`
+  - 현재 지원하는 API 테스트 실행기입니다.
+  - 현재는 `newman`만 지원합니다.
+
+- `api_test.start_command`
+  - API 서버를 실행할 명령입니다.
+  - 예: `npm run dev`, `pnpm run dev`
+
+- `api_test.start_cwd`
+  - `start_command`를 실행할 작업 디렉터리입니다.
+  - 예: `.`, `apps/server`
+
+- `api_test.base_url`
+  - API 서버 기본 주소입니다.
+  - 예: `http://127.0.0.1:4000`
+
+- `api_test.runtime.node_env`
+  - API 서버 실행 시 주입할 `NODE_ENV` 값입니다.
+  - 예: `test`, `development`, `production`
+
+- `api_test.runtime.port`
+  - API 서버 실행 시 주입할 `PORT` 값입니다.
+  - 예: `3000`, `4000`
+
+- `api_test.database.type`
+  - 테스트용 데이터베이스 종류입니다.
+  - 현재 내부 처리 기준으로 `postgresql`, `postgres`, `mysql`, `mariadb` 값을 기대합니다.
+
+- `api_test.database.url`
+  - 직접 사용할 DB 연결 문자열입니다.
+  - 값이 있으면 `host`, `port`, `name`, `user`, `password`보다 우선합니다.
+
+- `api_test.database.host`
+- `api_test.database.port`
+- `api_test.database.name`
+- `api_test.database.user`
+- `api_test.database.password`
+  - `database.url`을 직접 쓰지 않을 때 DB 연결 문자열을 조합하기 위한 값입니다.
+
+- `api_test.database.init.enabled`
+  - 테스트 시작 전에 테스트 DB 초기화를 수행할지 여부입니다.
+  - `true`, `false`
+
+- `api_test.database.init.mode`
+  - 테스트 DB 초기화 방식입니다.
+  - 현재는 `db_push`를 사용합니다.
+
+- `api_test.database.init.seed`
+  - 과거 호환용 항목입니다.
+  - 현재는 `.dev-analyzer.seed.json` 또는 `.dev-analyzer.seed/` 디렉터리의 외부 seed 파일을 자동으로 읽어, DB에 데이터가 없을 때만 주입하는 방식을 우선 사용합니다.
+
+- `api_test.redis.host`
+- `api_test.redis.port`
+  - API 서버 실행 시 주입할 Redis 연결 정보입니다.
+
+- `api_test.docker.services`
+  - 테스트 중 자동으로 띄울 Docker Compose 서비스 목록입니다.
+  - 예: `["db", "redis"]`
+
+- `api_test.docker.cleanup`
+  - API 테스트가 끝난 뒤 Docker Compose 서비스를 어떻게 정리할지 결정합니다.
+  - 허용값:
+    - `keep`: 아무 것도 하지 않습니다. 컨테이너를 계속 실행 상태로 둡니다.
+    - `stop`: 지정한 서비스를 정지만 합니다. 컨테이너는 남아 있습니다.
+    - `down`: `docker compose down`을 실행합니다.
+    - `down_volumes`: `docker compose down -v`를 실행합니다. 볼륨까지 제거합니다.
+
+- `api_test.healthcheck.path`
+  - 서버 준비 완료를 확인할 health check 경로입니다.
+  - 예: `/health`
+
+- `api_test.healthcheck.timeout_seconds`
+  - health check 최대 대기 시간(초)입니다.
+
+- `api_test.healthcheck.interval_seconds`
+  - health check 재시도 간격(초)입니다.
+
+- `api_test.env`
+  - 서버 실행 시 추가로 주입할 환경변수입니다.
+  - 예:
+    ```yaml
+    env:
+      NODE_ENV: "test"
+      PORT: "4000"
+    ```
+
+- `api_test.newman.collection`
+  - 실행할 Postman/Newman 컬렉션 파일 경로입니다.
+
+- `api_test.newman.environment`
+  - 선택 항목입니다.
+  - Newman environment 파일 경로입니다.
+
+- `api_test.newman.reporters`
+  - Newman reporter 목록입니다.
+  - 예: `["json"]`
+
+### 동작 방식
+
+- 분석기가 대상 프로젝트 서버를 `start_command`로 실행합니다.
+- 서버 실행에 필요한 의존성이 없어 보이면 lockfile 기준으로 `pnpm install`, `npm install`, `yarn install` 중 하나를 자동 시도합니다.
+- 테스트 DB/Redis를 Docker로 띄우는 프로젝트는 Docker Desktop이 설치되어 있어야 합니다.
+- Windows에서는 Docker Engine이 꺼져 있으면 Docker Desktop 실행을 자동 시도합니다.
+- 테스트 DB 스키마를 적용한 뒤, 분석 대상 프로젝트 루트의 외부 seed 파일을 확인합니다.
+- 외부 seed 파일이 있으면 대상 모델의 현재 row 수를 조회합니다.
+- 해당 모델에 데이터가 이미 있으면 seed를 건너뜁니다.
+- 해당 모델이 비어 있으면 외부 JSON/CSV 데이터를 DB에 주입합니다.
+- `healthcheck.path`가 응답할 때까지 대기합니다.
+- Newman 컬렉션을 실행하고 JSON 결과를 저장합니다.
+- 실패한 API 테스트를 정적 분석 결과와 함께 `merged_report.json` 및 `report.html`에 포함합니다.
+
+### 요구 사항
+
+- 대상 프로젝트에서 API 서버를 실행할 수 있어야 합니다.
+- 시스템에 `newman` 또는 `npx`가 설치되어 있어야 합니다.
+- YAML 설정 파일을 읽기 위해 이 프로젝트에는 `PyYAML` 의존성이 필요합니다.
+- 테스트 DB/Redis를 Docker Compose로 올리는 프로젝트라면 Docker Desktop이 설치되어 있고 실행 가능한 상태여야 합니다.
+
+### 외부 Seed 데이터
+
+옵션을 추가로 주지 않아도, 분석 대상 프로젝트 루트에 아래 경로 중 하나가 있으면 자동으로 외부 seed 데이터를 읽습니다.
+
+- `.dev-analyzer.seed.json`
+- `.dev-analyzer.seed/*.json`
+- `.dev-analyzer.seed/*.csv`
+
+외부 seed 파일이 전혀 없으면, 이 도구는 아래 우선순위로 프로젝트 구조를 읽어서 `.dev-analyzer.seed.json` 초안을 자동 생성합니다.
+
+1. `prisma/schema.prisma`
+2. `schema.sql`, `migrations/*.sql` 같은 SQL 파일
+3. `*.entity.ts`, `*.controller.ts`, `*.service.ts` 같은 소스코드
+
+동작 규칙은 다음과 같습니다.
+
+- 외부 seed 파일이 없으면 `.dev-analyzer.seed.json` 초안을 자동 생성합니다.
+- 스키마 적용 후 seed 파일을 확인합니다.
+- seed 파일에 지정된 모델에 대해 현재 DB row 수를 조회합니다.
+- row가 이미 있으면 해당 모델 seed는 건너뜁니다.
+- row가 0건이면 seed 데이터를 주입합니다.
+- 따라서 `cleanup: keep`일 때도 기존 데이터가 있으면 중복 삽입하지 않습니다.
+
+#### JSON 예시
+
+```json
+{
+  "industry": [
+    { "name": "IT/소프트웨어", "code": "IT", "description": "IT 및 소프트웨어 산업" }
+  ],
+  "agreement": [
+    { "type": "TERMS", "version": 1 }
+  ]
+}
+```
+
+- JSON의 key는 Prisma model accessor 이름 기준입니다.
+  - 예: `industry`, `agreement`, `memberRole`
+- value는 삽입할 row 배열입니다.
+
+#### 디렉터리 기반 예시
+
+- `.dev-analyzer.seed/industry.json`
+- `.dev-analyzer.seed/agreement.csv`
+
+파일명에서 model 이름을 추론합니다.
+숫자 prefix를 붙여 순서를 제어해도 됩니다.
+
+- `01_industry.json`
+- `02_agreement.csv`
+
+#### CSV 규칙
+
+- 첫 줄은 header입니다.
+- 각 row는 DB에 넣을 데이터 한 건입니다.
+- 빈 문자열은 `null`로 처리합니다.
+- `true`, `false`, 숫자 형태 값은 기본형으로 자동 변환합니다.
+
+예시 파일은 [`.dev-analyzer.seed.example.json`](D:/dev/linkvalue_dev_analyzer_agent/.dev-analyzer.seed.example.json) 에 있습니다.
 
 ## AI 요약
 

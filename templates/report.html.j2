@@ -6,6 +6,22 @@
   <style>
     body { font-family: Inter, Arial, sans-serif; margin: 24px; background: #f4f5f7; color: #1f2937; }
     h1, h2, h3 { color: #111827; margin-top: 0; }
+    .tabs { display: flex; gap: 10px; margin: 24px 0 16px; }
+    .tab-button { display: inline-flex; align-items: center; justify-content: center; padding: 10px 16px; border: 1px solid #d1d5db; border-radius: 999px; background: #ffffff; color: #374151; font-weight: 700; cursor: pointer; }
+    .tab-button.active { background: #111827; color: #ffffff; border-color: #111827; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .subtabs { display: flex; gap: 10px; margin: 24px 0 16px; flex-wrap: wrap; }
+    .subtab-button { display: inline-flex; align-items: center; justify-content: center; padding: 8px 14px; border: 1px solid #d1d5db; border-radius: 999px; background: #ffffff; color: #374151; font-weight: 700; cursor: pointer; }
+    .subtab-button.active { color: #ffffff; }
+    .subtab-button.subtab-passed { border-color: #86efac; background: #dcfce7; color: #166534; }
+    .subtab-button.subtab-passed.active { background: #22c55e; border-color: #22c55e; }
+    .subtab-button.subtab-failed { border-color: #fecaca; background: #fee2e2; color: #991b1b; }
+    .subtab-button.subtab-failed.active { background: #ef4444; border-color: #ef4444; }
+    .subtab-button.subtab-skipped { border-color: #fde68a; background: #fef3c7; color: #92400e; }
+    .subtab-button.subtab-skipped.active { background: #f59e0b; border-color: #f59e0b; }
+    .subtab-panel { display: none; }
+    .subtab-panel.active { display: block; }
     .page-header { margin-bottom: 24px; }
     .grid { display: grid; gap: 16px; }
     .overview-grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
@@ -35,7 +51,7 @@
     .fix-suggestion strong { color: #111827; }
     .fix-suggestion-code { margin-top: 8px; }
     .accordion-details { border: 1px solid #e5e7eb; border-radius: 14px; background: #ffffff; overflow: hidden; }
-    .accordion-details summary { list-style: none; cursor: pointer; padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; background: #f8fafc; border-radius: 14px; color: #111827; font-weight: 600; }
+      .accordion-details summary { list-style: none; cursor: pointer; padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 8px; align-items: start; background: #f8fafc; border-radius: 14px; color: #111827; font-weight: 600; }
     .accordion-details summary::-webkit-details-marker { display: none; }
     .accordion-details summary span { display: inline-flex; align-items: center; gap: 8px; }
     .accordion-content { padding: 0 16px 16px; }
@@ -53,15 +69,102 @@
     .ai-summary-content tbody, .ai-summary-content thead, .ai-summary-content tr { width: 100%; }
     .ai-summary-content span, .ai-summary-content strong, .ai-summary-content em { max-width: 100%; }
     .ai-summary-fallback { color: #7f1d1d; }
+    .api-ai-summary-card .ai-summary-content { max-height: 260px; overflow: auto; padding-right: 4px; font-size: 0.95rem; line-height: 1.55; }
+    .api-ai-summary-card .ai-summary-content p,
+    .api-ai-summary-card .ai-summary-content ul,
+    .api-ai-summary-card .ai-summary-content ol { margin-bottom: 8px; }
     .metadata { color: #6b7280; font-size: 0.95rem; margin-top: 6px; }
     .priority-reason { color: #374151; font-size: 0.95rem; margin-top: 6px; }
+      .api-groups { display: grid; gap: 14px; }
+      .api-group-title { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; justify-content: flex-start; width: 100%; }
+      .api-title-line { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; column-gap: 10px; width: 100%; text-align: left; }
+      .api-meta-line { display: flex; gap: 10px; align-items: center; justify-content: space-between; width: 100%; }
+      .api-count-badge { display: inline-flex; align-items: center; justify-content: center; margin-left: auto; padding: 6px 12px; border-radius: 999px; background: #e5e7eb; color: #374151; font-size: 0.92rem; font-weight: 700; white-space: nowrap; }
+      .api-method-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 58px; padding: 6px 12px; border-radius: 4px; color: #ffffff; font-size: 0.82rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; box-shadow: inset 0 0 0 1px rgba(255,255,255,0.16); }
+      .api-method-badge.method-get { background: #61affe; }
+      .api-method-badge.method-post { background: #49cc90; }
+      .api-method-badge.method-put { background: #fca130; }
+      .api-method-badge.method-patch { background: #50e3c2; color: #0f172a; box-shadow: inset 0 0 0 1px rgba(15,23,42,0.12); }
+      .api-method-badge.method-delete { background: #f93e3e; }
+      .api-method-badge.method-options { background: #0d5aa7; }
+      .api-method-badge.method-head { background: #9012fe; }
+      .api-method-badge.method-default { background: #6b7280; }
+      .api-endpoint-text { display: block; flex: 1 1 auto; min-width: 0; font-weight: 700; color: #111827; word-break: break-all; text-align: left; justify-self: start; align-self: center; }
+      .api-case-list { display: grid; gap: 12px; margin-top: 14px; }
+      .api-case-accordion { border: 1px solid #e5e7eb; border-radius: 12px; background: #ffffff; overflow: hidden; }
+      .api-case-accordion summary { list-style: none; cursor: pointer; padding: 14px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 8px; align-items: start; background: #ffffff; text-align: left; }
+      .api-case-accordion summary::-webkit-details-marker { display: none; }
+      .api-case-accordion[open] summary { background: #f8fafc; }
+      .api-case-body { padding: 0 14px 14px; }
+      .api-case-card { border-top: 1px solid #e5e7eb; padding-top: 14px; background: #ffffff; }
+      .api-case-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 10px; }
+      .accordion-details summary > .api-group-title { min-width: 0; width: 100%; text-align: left; justify-self: start; align-self: start; }
+      .api-case-accordion summary > div:first-child { min-width: 0; width: 100%; text-align: left; justify-self: start; align-self: start; }
+      .api-case-accordion summary p.metadata { margin: 4px 0 0; text-align: left; }
+      .api-case-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; justify-self: end; }
+      .api-kind-badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+      .api-role-badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 0.8rem; font-weight: 700; white-space: nowrap; }
+      .api-kind-read { background: #dbeafe; color: #1d4ed8; }
+      .api-kind-validation { background: #fee2e2; color: #b91c1c; }
+      .api-kind-auth { background: #ede9fe; color: #6d28d9; }
+      .api-kind-integration { background: #fef3c7; color: #92400e; }
+      .api-kind-trigger { background: #fde68a; color: #92400e; }
+      .api-kind-smoke { background: #dcfce7; color: #166534; }
+      .api-role-public { background: #e5e7eb; color: #374151; }
+      .api-role-admin { background: #fee2e2; color: #b91c1c; }
+      .api-role-lawyer { background: #dbeafe; color: #1d4ed8; }
+      .api-role-company { background: #dcfce7; color: #166534; }
+      .api-explainer-card { margin-top: 16px; }
+      .api-explainer-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+      .api-explainer-column { min-width: 0; }
+      .api-explainer-box { background: #ffffff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px 16px; box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04); }
+      .api-explainer-column h4 { margin: 0 0 10px; font-size: 0.95rem; color: #111827; }
+      .api-explainer-lines { display: grid; gap: 10px; }
+      .api-explainer-line { margin: 0; line-height: 1.7; color: #374151; }
+      @media (max-width: 900px) {
+        .api-explainer-grid { grid-template-columns: 1fr; }
+      }
+      .accordion-details summary .api-group-title { display: flex !important; }
+      .accordion-details summary .api-title-line { display: grid !important; }
+      .accordion-details summary .api-endpoint-text { display: block !important; }
+      .accordion-details summary .api-group-title .metadata { display: block !important; width: 100%; text-align: left !important; margin-left: 0 !important; }
+    .api-case-accordion summary .metadata { display: block !important; text-align: left !important; }
+    .skipped-flat-card { background: #ffffff; }
+    .skipped-flat-summary { padding: 14px 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; row-gap: 8px; align-items: start; background: #f8fafc; }
+    .skipped-flat-summary > div:first-child { min-width: 0; }
+    .skipped-flat-summary .metadata { margin: 4px 0 0; text-align: left; }
+    .api-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin-top: 12px; }
+    .api-detail-card { background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; padding: 12px; }
+    .api-detail-card h4 { margin: 0 0 8px; font-size: 0.95rem; }
+    .api-detail-card .code-block { margin-top: 0; }
   </style>
 </head>
 <body>
   <div class="page-header">
     <h1>Dev Analyzer Inspector 분석 리포트</h1>
-    <p>자동 생성된 정적 분석 결과를 개발자에게 보기 쉽게 정리합니다.</p>
+    <p>
+      {% if data.show_api_tab and not data.show_static_tab %}
+      자동 생성된 API 테스트 결과를 개발자에게 보기 쉽게 정리합니다.
+      {% elif data.show_static_tab and not data.show_api_tab %}
+      자동 생성된 정적 분석 결과를 개발자에게 보기 쉽게 정리합니다.
+      {% else %}
+      자동 생성된 분석 결과를 개발자에게 보기 쉽게 정리합니다.
+      {% endif %}
+    </p>
   </div>
+
+  {% if data.show_static_tab or data.show_api_tab %}
+  <div class="tabs">
+    {% if data.show_static_tab %}
+    <button class="tab-button active" data-tab="static-analysis">정적 분석</button>
+    {% endif %}
+    {% if data.show_api_tab %}
+    <button class="tab-button" data-tab="api-tests">API 테스트</button>
+    {% endif %}
+  </div>
+
+  {% if data.show_static_tab %}
+  <div id="static-analysis" class="tab-panel active">
 
   <div class="grid overview-grid">
     <div class="card">
@@ -211,7 +314,7 @@
   {% endif %}
 
   <h2 class="section-title">이슈 코드 샘플</h2>
-  {% for item in data.issues %}
+  {% for item in data.static_issues %}
   <div class="card">
     <h3>{{ loop.index }}. {{ item.file }}:{{ item.line }} ({{ item.tool_label }})</h3>
     <p class="metadata">{{ item.rule_id }}</p>
@@ -237,5 +340,376 @@
     </details>
   </div>
   {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if data.show_api_tab %}
+  <div id="api-tests" class="tab-panel">
+    <div class="grid overview-grid">
+        <div class="card">
+          <h2>Total Endpoints</h2>
+          <p class="stat">{{ data.api_tab.endpoint_coverage.discovered_total }}</p>
+          <p class="stat-label">Discovered API endpoints in this project</p>
+        </div>
+        <div class="card">
+          <h2>Endpoint Coverage</h2>
+          <p class="stat">{{ data.api_tab.endpoint_coverage.covered_total }} / {{ data.api_tab.endpoint_coverage.discovered_total }}</p>
+          <p class="stat-label">Unique covered endpoints / {{ data.api_tab.endpoint_coverage.coverage_rate }}%</p>
+          <p class="metadata">This card uses unique endpoint count.</p>
+        </div>
+        <div class="card">
+          <h2>Test Case Result</h2>
+          <p class="badge badge-low">Passed {{ data.api_tab.layer_summary.passed.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.passed.case_count }} cases</p>
+          <p class="badge badge-high">Failed {{ data.api_tab.layer_summary.failed.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.failed.case_count }} cases</p>
+          <p class="badge badge-medium">Skipped {{ data.api_tab.layer_summary.skipped.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.skipped.case_count }} cases</p>
+          <p class="stat-label">Executed test cases {{ data.api_tab.summary.executed }} / Total test cases {{ data.api_tab.summary.total }} / Pass rate {{ data.api_tab.summary.pass_rate }}%</p>
+        </div>
+        <div class="card api-ai-summary-card">
+          <h2>AI Test Summary</h2>
+          <div class="ai-summary-content">{{ data.api_ai_summary_html | safe }}</div>
+        </div>
+    </div>
+
+    <div class="card api-explainer-card">
+      <div class="api-explainer-lines">
+        <p class="api-explainer-line">
+          <span class="badge badge-low">Passed Cases</span>
+          예상한 응답이나 오류 패턴이 확인된 테스트입니다. 조회 성공뿐 아니라 의도한 검증 오류, 인증 오류 시나리오도 포함됩니다.
+        </p>
+        <p class="api-explainer-line">
+          <span class="badge badge-high">Failed Cases</span>
+          기대한 상태 코드, 응답 구조, 오류 패턴과 실제 결과가 달랐던 테스트입니다. 회귀나 계약 불일치 가능성을 먼저 확인하면 좋습니다.
+        </p>
+        <p class="api-explainer-line">
+          <span class="badge badge-medium">Skipped Cases</span>
+          콜백, 웹훅, 외부 연동, 트리거성 동작처럼 기본 smoke에서 재현하기 어렵거나 부작용 가능성이 있어 별도 integration 검증이 필요한 테스트입니다.
+        </p>
+      </div>
+    </div>
+
+    <h2 class="section-title">API Test Results</h2>
+    <div class="card">
+      {% if data.api_tab.available and data.api_tab.groups %}
+      {% set layer_specs = [
+        ('api-passed', 'Passed', data.api_tab.group_layers.passed, data.api_tab.layer_summary.passed),
+        ('api-failed', 'Failed', data.api_tab.group_layers.failed, data.api_tab.layer_summary.failed),
+        ('api-skipped', 'Skipped', data.api_tab.group_layers.skipped, data.api_tab.layer_summary.skipped)
+      ] %}
+      <div class="subtabs">
+        {% for layer_id, layer_label, layer_groups, layer_summary in layer_specs %}
+        <button class="subtab-button subtab-{{ layer_id.replace('api-', '') }}{% if loop.first %} active{% endif %}" data-subtab="{{ layer_id }}">{{ layer_label }} {{ layer_summary.endpoint_count }} endpoints / {{ layer_summary.case_count }} cases</button>
+        {% endfor %}
+      </div>
+      {% for layer_id, layer_label, layer_groups, layer_summary in layer_specs %}
+      <div id="{{ layer_id }}" class="subtab-panel{% if loop.first %} active{% endif %}">
+        {% if layer_id == 'api-passed' %}
+          <div class="api-explainer-grid" style="margin-bottom: 16px;">
+            <div class="api-explainer-column api-explainer-box">
+              <h4>테스트 유형</h4>
+              <div class="api-explainer-lines">
+                <p class="api-explainer-line">
+                  <span class="api-kind-badge api-kind-read">조회</span>
+                  목록, 상세, 검색처럼 정상 응답 구조를 확인하는 읽기 중심 테스트입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-kind-badge api-kind-validation">검증 오류</span>
+                  빈 값이나 잘못된 입력에 대해 API가 400 계열 검증 오류로 올바르게 거절하는지 확인합니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-kind-badge api-kind-auth">인증 오류</span>
+                  토큰 누락이나 잘못된 인증 정보 상황에서 인증 관련 오류 응답이 정상적으로 반환되는지 확인합니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-kind-badge api-kind-smoke">헬스체크 / 스모크</span>
+                  서버 기동, 문서 노출, 기본 엔드포인트 연결 상태를 빠르게 확인하는 기초 테스트입니다.
+                </p>
+              </div>
+            </div>
+            <div class="api-explainer-column api-explainer-box">
+              <h4>권한 유형</h4>
+              <div class="api-explainer-lines">
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-public">Public</span>
+                  토큰 없이 호출 가능한 공개 API를 검증한 케이스입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-admin">Admin</span>
+                  관리자 권한 토큰으로 호출해 관리자 전용 API 또는 관리자 조회 권한을 검증한 케이스입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-lawyer">Lawyer</span>
+                  변호사 권한 토큰으로 호출해 변호사 사용자 관점의 접근 가능 여부를 검증한 케이스입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-company">Company Manager</span>
+                  기업 담당자 권한 토큰으로 호출해 기업 사용자 관점의 접근 가능 여부를 검증한 케이스입니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+        {% if layer_id == 'api-skipped' %}
+          <div class="api-explainer-grid" style="margin-bottom: 16px;">
+            <div class="api-explainer-column api-explainer-box">
+              <h4>테스트 유형</h4>
+              <div class="api-explainer-lines">
+                <p class="api-explainer-line">
+                  <span class="api-kind-badge api-kind-integration">콜백/연동</span>
+                  외부 서비스의 실제 콜백, 서명, 공급자 응답, 웹훅 payload가 있어야 정확히 검증할 수 있는 유형입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-kind-badge api-kind-trigger">트리거/배치</span>
+                  실행 시 데이터 갱신, 집계, 동기화 같은 부작용이 있어 기본 smoke에서 제외한 유형입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-kind-badge api-kind-integration">연동 제외</span>
+                  공개 라우트이지만 기본 smoke 범위를 넘어서는 외부 의존성이나 운영 영향이 있어 별도 검증이 필요한 유형입니다.
+                </p>
+              </div>
+            </div>
+            <div class="api-explainer-column api-explainer-box">
+              <h4>권한 유형</h4>
+              <div class="api-explainer-lines">
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-public">Public</span>
+                  대부분 토큰 없이 접근 가능하지만 외부 연동 조건이 부족해 기본 실행에서 건너뛴 케이스입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-admin">Admin</span>
+                  관리자 권한이 있어도 외부 콜백, 파일, 배치 조건이 필요해 별도 시나리오가 필요한 케이스입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-lawyer">Lawyer</span>
+                  변호사 권한으로 접근할 수 있어도 외부 데이터나 상태 조건이 있어 기본 smoke에서는 제외한 케이스입니다.
+                </p>
+                <p class="api-explainer-line">
+                  <span class="api-role-badge api-role-company">Company Manager</span>
+                  기업 담당자 권한과 별개로 외부 연동 또는 부작용 조건이 있어 분리된 케이스입니다.
+                </p>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+        {% if layer_groups %}
+        {% if layer_id == 'api-skipped' %}
+        <div class="api-groups">
+          {% for group in layer_groups %}
+            {% for test in group.cases %}
+            <div class="accordion-details skipped-flat-card">
+              <div class="skipped-flat-summary">
+                <div>
+                  <p class="metadata">
+                    <span class="api-title-line">
+                      <span class="api-method-badge method-{{ (test.method or 'default') | lower }}">{{ test.method or '-' }}</span>
+                      <span class="api-endpoint-text">{{ test.request_target }}</span>
+                    </span>
+                  </p>
+                  {% if test.kind and test.kind.label %}
+                  <p class="metadata">
+                    {% if test.kind and test.kind.label %}<span class="api-kind-badge api-kind-{{ test.kind.class }}">{{ test.kind.label }}</span>{% endif %}
+                    {% if test.role and test.role.label %}<span class="api-role-badge api-role-{{ test.role.class }}">{{ test.role.label }}</span>{% endif %}
+                  </p>
+                  {% endif %}
+                  <p class="metadata"><strong>이유:</strong> {{ test.translated_reason or test.message }}</p>
+                </div>
+                <div class="api-case-meta">
+                  <span class="badge badge-{{ test.result_class }}">{{ test.result_label }}</span>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="api-groups">
+          {% for group in layer_groups %}
+          <details class="accordion-details">
+            <summary>
+              <span class="api-group-title">
+                <span class="api-title-line">
+                  <span class="api-method-badge method-{{ (group.method or 'default') | lower }}">{{ group.method or '-' }}</span>
+                  <span class="api-endpoint-text">{{ group.endpoint or '-' }}</span>
+                </span>
+                <span class="api-meta-line">
+                  <span class="metadata">{{ group.name }}</span>
+                  <span class="api-count-badge">Cases {{ group.total }}</span>
+                </span>
+              </span>
+            </summary>
+            <div class="accordion-content">
+              <div class="api-case-list">
+                {% for test in group.cases %}
+                <details class="api-case-accordion">
+                  <summary>
+                    <div>
+                      <strong>{{ test.name }}</strong>
+                      <p class="metadata">
+                        <span class="api-title-line">
+                          <span class="api-method-badge method-{{ (test.method or 'default') | lower }}">{{ test.method or '-' }}</span>
+                          <span class="api-endpoint-text">{{ test.request_target }}</span>
+                        </span>
+                      </p>
+                      {% if test.kind and test.kind.label %}
+                      <p class="metadata">
+                        {% if test.kind and test.kind.label %}<span class="api-kind-badge api-kind-{{ test.kind.class }}">{{ test.kind.label }}</span>{% endif %}
+                        {% if test.role and test.role.label %}<span class="api-role-badge api-role-{{ test.role.class }}">{{ test.role.label }}</span>{% endif %}
+                      </p>
+                      {% endif %}
+                      {% if test.result == 'SKIPPED' and test.translated_reason %}
+                      <p class="metadata"><strong>이유:</strong> {{ test.translated_reason }}</p>
+                      {% endif %}
+                    </div>
+                    <div class="api-case-meta">
+                      <span class="badge badge-{{ test.result_class }}">{{ test.result_label }}</span>
+                      <span class="metadata">Status {{ test.status_code }}</span>
+                      <span class="metadata">Time {{ test.response_time_ms }}ms</span>
+                    </div>
+                  </summary>
+                  <div class="api-case-body">
+                    <div class="api-case-card">
+                        <h4>이유</h4>
+                      {% if test.result in ['FAILED', 'SKIPPED'] and test.translated_reason %}
+                      <div class="fix-suggestion" style="margin-top: 12px;">
+                        <h4>이유</h4>
+                        <p>{{ test.translated_reason }}</p>
+                      </div>
+                      {% endif %}
+                      <div class="api-detail-grid">
+                        <div class="api-detail-card">
+                          <h4>Request</h4>
+                          <p class="metadata">Target: {{ test.request_target }}</p>
+                          <p class="metadata">Headers</p>
+                          <div class="code-block">{{ test.request_headers }}</div>
+                          <p class="metadata">Body</p>
+                          <div class="code-block">{{ test.request_body }}</div>
+                        </div>
+                        <div class="api-detail-card">
+                          <h4>Response</h4>
+                          <p class="metadata">Status code: {{ test.status_code }} / Response time: {{ test.response_time_ms }}ms</p>
+                          <p class="metadata">Headers</p>
+                          <div class="code-block">{{ test.response_headers }}</div>
+                          <p class="metadata">Body</p>
+                          <div class="code-block">{{ test.response_body }}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </details>
+                {% endfor %}
+              </div>
+            </div>
+          </details>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="card">
+          <p>No APIs in the {{ layer_label }} layer.</p>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <p>No API test results available.</p>
+      {% if data.api_test_status.reason %}
+      <p class="metadata">{{ data.api_test_status.reason }}</p>
+      {% else %}
+      <p class="metadata">Check `.dev-analyzer.yml` and the Newman execution result.</p>
+      {% endif %}
+      {% endif %}
+    </div>
+    </div>
+
+    {% if data.api_test_issues %}
+    <h2 class="section-title">Failed API Details</h2>
+    <div class="card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Test</th>
+            <th>Method</th>
+            <th>Endpoint</th>
+            <th class="col-severity">Severity</th>
+            <th>Status Code</th>
+            <th>Response Time (ms)</th>
+            <th>Message</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in data.api_test_issues %}
+          <tr>
+            <td>{{ item.rule_id }}</td>
+            <td>{{ item.method or "-" }}</td>
+            <td>{{ item.endpoint or "-" }}</td>
+            <td class="severity-{{ item.severity }}">{{ item.severity_label }}</td>
+            <td>{{ item.status_code or "-" }}</td>
+            <td>{{ item.response_time_ms or "-" }}</td>
+            <td>{{ item.translated_message }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if data.api_test_summary.slowest %}
+      <p class="metadata" style="margin-top: 16px;">
+        Slowest failed response: {{ data.api_test_summary.slowest.method or "-" }} {{ data.api_test_summary.slowest.endpoint or "-" }}
+        ({{ data.api_test_summary.slowest.response_time_ms or "-" }}ms)
+      </p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <script>
+    const showStaticTab = {{ 'true' if data.show_static_tab else 'false' }};
+    const showApiTab = {{ 'true' if data.show_api_tab else 'false' }};
+    const defaultTab = {{ data.default_tab | tojson }};
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanels = document.querySelectorAll('.tab-panel');
+
+    if (!showStaticTab) {
+      document.querySelector('[data-tab="static-analysis"]')?.remove();
+      document.getElementById('static-analysis')?.remove();
+    }
+
+    if (!showApiTab) {
+      document.querySelector('[data-tab="api-tests"]')?.remove();
+      document.getElementById('api-tests')?.remove();
+    }
+
+    const visibleButtons = document.querySelectorAll('.tab-button');
+    const visiblePanels = document.querySelectorAll('.tab-panel');
+    const tabsContainer = document.querySelector('.tabs');
+
+    if (tabsContainer && visibleButtons.length <= 1) {
+      tabsContainer.style.display = 'none';
+    }
+
+    visibleButtons.forEach((button) => {
+      button.classList.toggle('active', button.dataset.tab === defaultTab);
+    });
+    visiblePanels.forEach((panel) => {
+      panel.classList.toggle('active', panel.id === defaultTab);
+    });
+
+    visibleButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.tab;
+        visibleButtons.forEach((item) => item.classList.toggle('active', item === button));
+        visiblePanels.forEach((panel) => panel.classList.toggle('active', panel.id === target));
+      });
+    });
+
+    const subtabButtons = document.querySelectorAll('.subtab-button');
+    const subtabPanels = document.querySelectorAll('.subtab-panel');
+    subtabButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const target = button.dataset.subtab;
+        subtabButtons.forEach((item) => item.classList.toggle('active', item === button));
+        subtabPanels.forEach((panel) => panel.classList.toggle('active', panel.id === target));
+      });
+    });
+  </script>
 </body>
 </html>
