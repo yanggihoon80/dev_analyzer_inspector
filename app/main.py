@@ -1,6 +1,7 @@
 import argparse
 import os
 import sys
+import traceback
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -52,6 +53,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Dev Analyzer Inspector MVP")
     parser.add_argument("repo_url", nargs="?", default=default_repo_url, help="Git repository URL to analyze")
     parser.add_argument("--branch", default=default_branch, help="Git branch to clone")
+    parser.add_argument(
+        "--refresh-test-design",
+        action="store_true",
+        help="Force refresh of auto-generated API test design files before running tests",
+    )
     args = parser.parse_args()
 
     if not args.repo_url:
@@ -141,7 +147,13 @@ def main() -> None:
     if api_test_enabled:
         print("[5/6] API 테스트 시작")
         _clear_output(output_dir / "api_test.json")
-        api_test_path = safe_run("api_test", run_api_tests, repo_path, output_dir / "api_test.json")
+        api_test_path = safe_run(
+            "api_test",
+            run_api_tests,
+            repo_path,
+            output_dir / "api_test.json",
+            args.refresh_test_design,
+        )
         if api_test_path:
             tool_outputs["api_test"] = api_test_path
             api_test_status["ran"] = True
@@ -183,4 +195,5 @@ if __name__ == "__main__":
         raise SystemExit(130)
     except Exception as error:
         print(f"오류: {error}", file=sys.stderr)
+        traceback.print_exc()
         raise SystemExit(1)

@@ -30,6 +30,7 @@
     .stat { font-size: 2rem; font-weight: 700; margin: 0; }
     .stat-label { color: #6b7280; margin-top: 8px; }
     .badge { display: inline-flex; align-items: center; justify-content: center; padding: 4px 10px; border-radius: 999px; font-size: 0.85rem; font-weight: 600; }
+    .badge-block { display: flex; width: fit-content; margin: 0 0 8px 0; }
     .badge-high { background: #fee2e2; color: #991b1b; }
     .badge-medium { background: #fef3c7; color: #92400e; }
     .badge-low { background: #d1fae5; color: #166534; }
@@ -359,16 +360,55 @@
         </div>
         <div class="card">
           <h2>Test Case Result</h2>
-          <p class="badge badge-low">Passed {{ data.api_tab.layer_summary.passed.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.passed.case_count }} cases</p>
-          <p class="badge badge-high">Failed {{ data.api_tab.layer_summary.failed.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.failed.case_count }} cases</p>
-          <p class="badge badge-medium">Skipped {{ data.api_tab.layer_summary.skipped.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.skipped.case_count }} cases</p>
-          <p class="stat-label">Executed test cases {{ data.api_tab.summary.executed }} / Total test cases {{ data.api_tab.summary.total }} / Pass rate {{ data.api_tab.summary.pass_rate }}%</p>
+          <p class="badge badge-low badge-block">통과 {{ data.api_tab.layer_summary.passed.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.passed.case_count }} cases</p>
+          <p class="badge badge-high badge-block">실패 {{ data.api_tab.layer_summary.failed.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.failed.case_count }} cases</p>
+          <p class="badge badge-medium badge-block">건너뜀 {{ data.api_tab.layer_summary.skipped.endpoint_count }} endpoints / {{ data.api_tab.layer_summary.skipped.case_count }} cases</p>
+          <p class="stat-label">실행된 테스트 케이스 {{ data.api_tab.summary.executed }} / 전체 테스트 케이스 {{ data.api_tab.summary.total }} / 통과율 {{ data.api_tab.summary.pass_rate }}%</p>
+          {% if data.api_tab.failure_summary and data.api_tab.failure_summary.top %}
+          <p class="metadata">대표 실패 유형: {{ data.api_tab.failure_summary.top.label }} ({{ data.api_tab.failure_summary.top.case_count }} cases / {{ data.api_tab.failure_summary.top.endpoint_count }} endpoints)</p>
+          {% endif %}
+        </div>
+    </div>
+
+    <div class="grid overview-grid" style="margin-top: 16px;">
+        <div class="card">
+          <h2>Failure Analysis</h2>
+          {% if data.api_tab.failure_summary and data.api_tab.failure_summary.types %}
+            {% for item in data.api_tab.failure_summary.types %}
+            <p class="badge badge-{{ item.class }}">{{ item.label }} {{ item.endpoint_count }} endpoints / {{ item.case_count }} cases</p>
+            {% endfor %}
+          {% else %}
+          <p class="stat-label">이번 실행에서 실패한 API 테스트 케이스가 없습니다.</p>
+          {% endif %}
         </div>
         <div class="card api-ai-summary-card">
           <h2>AI Test Summary</h2>
           <div class="ai-summary-content">{{ data.api_ai_summary_html | safe }}</div>
         </div>
     </div>
+
+    {% if data.api_tab.collection_generation and data.api_tab.collection_generation.mode %}
+    <div class="card" style="margin-top: 16px;">
+      <h2>Auto Test Design</h2>
+      <p class="metadata">
+        Mode: {{ data.api_tab.collection_generation.mode }}
+        {% if data.api_tab.collection_generation.source %}/ Source: {{ data.api_tab.collection_generation.source }}{% endif %}
+        {% if data.api_tab.collection_generation.reused %}/ Reused existing design{% else %}/ Freshly generated{% endif %}
+        {% if data.api_tab.collection_generation.llm_enabled %}/ LLM inference enabled{% else %}/ Fallback mode{% endif %}
+      </p>
+      <p class="metadata">
+        Public routes {{ data.api_tab.collection_generation.public_routes or 0 }} /
+        Protected routes {{ data.api_tab.collection_generation.protected_routes or 0 }} /
+        Skipped routes {{ data.api_tab.collection_generation.skipped_routes or 0 }}
+      </p>
+      {% if data.api_tab.collection_generation.blueprint_path %}
+      <p class="metadata">Blueprint: {{ data.api_tab.collection_generation.blueprint_path }}</p>
+      {% endif %}
+      {% if data.api_tab.collection_generation.collection_path %}
+      <p class="metadata">Collection: {{ data.api_tab.collection_generation.collection_path }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
 
     <div class="card api-explainer-card">
       <div class="api-explainer-lines">
@@ -553,6 +593,7 @@
                       <p class="metadata">
                         {% if test.kind and test.kind.label %}<span class="api-kind-badge api-kind-{{ test.kind.class }}">{{ test.kind.label }}</span>{% endif %}
                         {% if test.role and test.role.label %}<span class="api-role-badge api-role-{{ test.role.class }}">{{ test.role.label }}</span>{% endif %}
+                        {% if test.failure_type and test.failure_type.label %}<span class="badge badge-{{ test.failure_type.class }}">{{ test.failure_type.label }}</span>{% endif %}
                       </p>
                       {% endif %}
                       {% if test.result == 'SKIPPED' and test.translated_reason %}

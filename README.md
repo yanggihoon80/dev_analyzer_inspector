@@ -387,3 +387,55 @@ api_test:
 - ESLint는 리포지토리에 `eslint.config.js` 또는 `.eslintrc.*` 설정이 있으면 그 설정을 사용합니다.
 - 설정이 없을 경우, 이 도구는 기본 ESLint flat config 파일 `templates/eslint.default.config.cjs`를 주입하여 분석을 시도합니다.
 - `eslint` 또는 `npx`가 없으면 해당 도구 결과는 건너뛰고 나머지 분석은 계속 진행됩니다.
+
+
+## Auto Test Design
+
+The API test engine can now generate test design artifacts automatically at runtime.
+
+- Generated files are created inside the analyzed project:
+  - `.dev-analyzer.seed.json`
+  - `.dev-analyzer.auth-matrix.json`
+  - `.dev-analyzer-tools/generated/auto-test-blueprint.json`
+  - `.dev-analyzer-tools/generated/auto-smoke.collection.json`
+- These generated files are also added to `.git/info/exclude` automatically so they do not pollute normal Git status.
+
+### LLM toggle
+
+Add these keys to `.env` to control automatic design generation:
+
+```env
+API_TEST_AUTO_LLM_ENABLED=true
+API_TEST_AUTO_MODEL=gpt-4o-mini
+API_TEST_WRITE_SUCCESS_ENABLED=false
+```
+
+- `API_TEST_AUTO_LLM_ENABLED=true`
+  - Use LLM inference first when building the initial API test design.
+  - If LLM inference fails or is unavailable, the engine falls back to built-in heuristics.
+- `API_TEST_AUTO_LLM_ENABLED=false`
+  - Skip LLM inference entirely and always use the heuristic fallback.
+- `API_TEST_AUTO_MODEL`
+  - Select the model used for design inference.
+- `API_TEST_WRITE_SUCCESS_ENABLED=false`
+  - Keep automatic write-method tests in safe negative mode by default.
+  - When `false`, generated `POST/PUT/PATCH/DELETE` tests focus on unauthorized, forbidden, and validation-style failures.
+  - When `true`, the engine may also generate authorized write-success cases if it can infer a sample payload from existing Postman collections.
+
+### Reuse behavior
+
+- The engine does not regenerate the design on every run.
+- If these files already exist, the engine reuses them:
+  - `.dev-analyzer-tools/generated/auto-test-blueprint.json`
+  - `.dev-analyzer-tools/generated/auto-smoke.collection.json`
+- If they do not exist, the engine creates them automatically before the API test starts.
+
+### Force refresh
+
+Use this argument to regenerate the design files intentionally:
+
+```bash
+python app/main.py --refresh-test-design
+```
+
+This forces the engine to rebuild the blueprint and collection even if existing generated files are already present.

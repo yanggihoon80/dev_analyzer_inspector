@@ -28,36 +28,52 @@ def _is_ai_enabled() -> bool:
 
 
 def generate_api_test_summary(api_tab: dict[str, Any]) -> str:
-    if not _is_ai_enabled():
-        return "<div class='ai-summary-fallback'><p>AI summary disabled: AI_REPORT_ENABLED=false</p></div>"
+    summary = api_tab.get("summary", {}) if isinstance(api_tab, dict) else {}
+    endpoint_coverage = api_tab.get("endpoint_coverage", {}) if isinstance(api_tab, dict) else {}
+    layer_summary = api_tab.get("layer_summary", {}) if isinstance(api_tab, dict) else {}
+    group_layers = api_tab.get("group_layers", {}) if isinstance(api_tab, dict) else {}
+    failure_summary = api_tab.get("failure_summary", {}) if isinstance(api_tab, dict) else {}
 
-    if OpenAI is None:
-        return "<div class='ai-summary-fallback'><p>AI summary unavailable: openai package is not installed.</p></div>"
+    discovered_endpoints = int(endpoint_coverage.get("discovered_total", 0) or 0)
+    covered_endpoints = int(endpoint_coverage.get("covered_total", 0) or 0)
+    passed_endpoints = int(layer_summary.get("passed", {}).get("endpoint_count", 0) or 0)
+    failed_endpoints = int(layer_summary.get("failed", {}).get("endpoint_count", 0) or 0)
+    skipped_endpoints = int(layer_summary.get("skipped", {}).get("endpoint_count", 0) or 0)
 
-    api_key = _get_openai_key()
-    if not api_key:
-        return "<div class='ai-summary-fallback'><p>AI summary unavailable: OPENAI_API_KEY is not configured.</p></div>"
+    total_cases = int(summary.get("total", 0) or 0)
+    executed_cases = int(summary.get("executed", 0) or 0)
+    passed_cases = int(summary.get("passed", 0) or 0)
+    failed_cases = int(summary.get("failed", 0) or 0)
+    skipped_cases = int(summary.get("skipped", 0) or 0)
+    pass_rate = summary.get("pass_rate", 0)
 
-    prompt = _build_api_test_prompt(api_tab)
-    client = OpenAI(api_key=api_key)
+    sentences = [
+        f"전체 엔드포인트는 {discovered_endpoints}개이며, 현재 API 테스트 세트가 커버하는 엔드포인트는 {covered_endpoints}개입니다.",
+        f"이번 실행에서는 전체 테스트 케이스 {total_cases}개 중 {executed_cases}개가 실행되었고, 통과는 {passed_cases}개, 실패는 {failed_cases}개, 건너뜀은 {skipped_cases}개였습니다.",
+        f"엔드포인트 기준으로는 통과 {passed_endpoints}개, 실패 {failed_endpoints}개, 건너뜀 {skipped_endpoints}개이며, 케이스 기준 통과율은 {pass_rate}%입니다.",
+    ]
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are a helpful API quality report assistant. Reply in Korean with only 3 to 4 short narrative sentences. Do not use bullets, numbering, headings, markdown, or HTML.",
-                },
-                {"role": "user", "content": prompt},
-            ],
-            max_tokens=180,
-            temperature=0.3,
+    failed_groups = group_layers.get("failed", []) if isinstance(group_layers.get("failed"), list) else []
+    skipped_groups = group_layers.get("skipped", []) if isinstance(group_layers.get("skipped"), list) else []
+    top_failure_type = failure_summary.get("top") if isinstance(failure_summary.get("top"), dict) else None
+    if failed_groups:
+        top_failed = failed_groups[0]
+        sentences.append(
+            f"가장 먼저 확인할 대상은 {top_failed.get('method', '-')} {top_failed.get('endpoint', '-')}이며, 이 엔드포인트에서 실패 케이스 {top_failed.get('failed', 0)}개가 발생했습니다."
         )
-        content = response.choices[0].message.content.strip()
-        return _render_markdown(content)
-    except Exception as error:
-        return f"<div class='ai-summary-fallback'><p>AI summary unavailable: {html.escape(str(error))}</p></div>"
+        if top_failure_type:
+            sentences.append(
+                f"가장 많이 나타난 실패 유형은 {top_failure_type.get('label', '기타 응답 불일치')}이며, 해당 유형의 실패 케이스는 {top_failure_type.get('case_count', 0)}개였습니다."
+            )
+    elif skipped_groups:
+        top_skipped = skipped_groups[0]
+        sentences.append(
+            f"실패한 엔드포인트는 없고, 건너뜀 대상 중 대표 항목은 {top_skipped.get('method', '-')} {top_skipped.get('endpoint', '-')}입니다."
+        )
+    else:
+        sentences.append("실패하거나 건너뛴 엔드포인트가 없어 전체 흐름은 안정적으로 통과했습니다.")
+
+    return _render_markdown(" ".join(sentences))
 
 
 def _build_prompt(items: list[dict], summary: dict) -> str:

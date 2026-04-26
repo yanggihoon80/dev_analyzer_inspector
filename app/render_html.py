@@ -538,6 +538,89 @@ def _build_authorization_issue_message(test_name: str, request: dict, status_cod
     return None
 
 
+def _to_int_or_none(value) -> int | None:
+    try:
+        if value in (None, "", "-"):
+            return None
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _classify_api_failure(
+    test_name: str,
+    request: dict,
+    status_code: int | None,
+    message: str,
+    matrix: dict,
+) -> dict[str, str]:
+    combined = " ".join([str(test_name or ""), str(message or "")]).lower()
+    expectation = _lookup_authorization_expectation(
+        matrix,
+        str(request.get("method") or ""),
+        _normalize_api_request_path(request.get("url")),
+        _build_api_test_role(test_name, request).get("label", ""),
+        test_name,
+    )
+    auth_issue_message = _build_authorization_issue_message(
+        test_name,
+        request,
+        int(status_code or 0),
+        matrix,
+    )
+
+    if any(token in combined for token in ["timed out", "timeout", "econrefused", "unable to connect", "connection refused"]):
+        return {"key": "connectivity", "label": "연결/기동 문제", "class": "medium"}
+    if status_code is not None and status_code >= 500:
+        return {"key": "server_error", "label": "서버 오류 의심", "class": "high"}
+    if status_code == 400 or any(token in combined for token in ["validation error", "bad request", "검증 오류"]):
+        return {"key": "validation", "label": "검증 실패", "class": "medium"}
+    if auth_issue_message or status_code in {401, 403} or (status_code == 404 and expectation == "deny"):
+        return {"key": "auth", "label": "권한 문제", "class": "high"}
+    if status_code == 404:
+        return {"key": "not_found", "label": "데이터 없음/상세 추적 실패", "class": "medium"}
+    return {"key": "other", "label": "기타 응답 불일치", "class": "medium"}
+
+
+def _summarize_api_failure_types(tests: list[dict]) -> dict:
+    summary = {"total_failed_cases": 0, "types": [], "top": None}
+    grouped: dict[str, dict] = {}
+
+    for test in tests:
+        if test.get("result") != "FAILED":
+            continue
+        failure_type = test.get("failure_type") if isinstance(test.get("failure_type"), dict) else {}
+        key = str(failure_type.get("key") or "other")
+        group = grouped.setdefault(
+            key,
+            {
+                "key": key,
+                "label": str(failure_type.get("label") or "기타 응답 불일치"),
+                "class": str(failure_type.get("class") or "medium"),
+                "case_count": 0,
+                "endpoints": set(),
+            },
+        )
+        group["case_count"] += 1
+        group["endpoints"].add((test.get("method", ""), test.get("endpoint", "")))
+        summary["total_failed_cases"] += 1
+
+    types = []
+    for item in grouped.values():
+        types.append(
+            {
+                "key": item["key"],
+                "label": item["label"],
+                "class": item["class"],
+                "case_count": item["case_count"],
+                "endpoint_count": len(item["endpoints"]),
+            }
+        )
+    types.sort(key=lambda item: (-item["case_count"], -item["endpoint_count"], item["label"]))
+    summary["types"] = types
+    summary["top"] = types[0] if types else None
+    return summary
+
 def _load_skip_reason_rules(repo_path: Path | None) -> list[dict]:
     if repo_path is None:
         return []
@@ -725,6 +808,7 @@ def _build_api_tab_data(
             "skipped_total": 0,
             "coverage_rate": 0,
         },
+        "collection_generation": {},
     }
     payload: dict = {}
     if api_test_output is not None and api_test_output.is_file():
@@ -738,6 +822,7 @@ def _build_api_tab_data(
     executions = run.get("executions") if isinstance(run.get("executions"), list) else []
     failures = run.get("failures") if isinstance(run.get("failures"), list) else []
     authorization_matrix = payload.get("authorization_matrix") if isinstance(payload.get("authorization_matrix"), dict) else {}
+    collection_generation = payload.get("collection_generation") if isinstance(payload.get("collection_generation"), dict) else {}
 
     failure_map: dict[str, list[str]] = {}
     for failure in failures:
@@ -832,6 +917,16 @@ def _build_api_tab_data(
             )
             if auth_issue_message:
                 tests[-1]["message"] = f"{auth_issue_message} | 원본: {tests[-1]['message']}"
+            tests[-1]["failure_type"] = _classify_api_failure(
+                tests[-1]["name"],
+                request,
+                _to_int_or_none(status_code),
+                tests[-1]["message"],
+                authorization_matrix,
+            )
+        else:
+            tests[-1]["failure_type"] = None
+
 
     skipped_tests: list[dict] = []
     for collection_path in skipped_collection_paths or []:
@@ -912,6 +1007,7 @@ def _build_api_tab_data(
     failed_groups = [group for group in groups if group.get("failed", 0) > 0]
     skipped_groups = [group for group in groups if group.get("failed", 0) == 0 and group.get("skipped", 0) > 0]
     endpoint_coverage = _build_api_endpoint_coverage(repo_path, tests)
+    failure_summary = _summarize_api_failure_types(tests)
 
     return {
         "available": bool(tests),
@@ -927,6 +1023,8 @@ def _build_api_tab_data(
         "tests": tests,
         "groups": groups,
         "endpoint_coverage": endpoint_coverage,
+        "collection_generation": collection_generation,
+        "failure_summary": failure_summary,
         "group_layers": {
             "passed": passed_groups,
             "failed": failed_groups,
